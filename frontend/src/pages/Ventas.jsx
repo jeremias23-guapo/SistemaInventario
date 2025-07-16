@@ -25,12 +25,14 @@ export default function Ventas() {
       fecha: v.fecha ? v.fecha.slice(0, 10) : ''
     }));
 
-  // Carga todas las ventas y formatea fechas
+  // Carga todas las ventas, limpia filtros y formatea fechas
   const loadVentas = async () => {
     setLoading(true);
     try {
       const data = await fetchVentas();
       setVentas(formatVentas(data));
+      setCodigo('');
+      setFecha('');
     } catch (err) {
       console.error('Error cargando ventas', err);
     } finally {
