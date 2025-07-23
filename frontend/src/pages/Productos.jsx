@@ -14,7 +14,7 @@ import {
 } from '@mui/material';
 import DataTable from '../components/DataTable';
 import { fetchProductos } from '../api/productos';
-import { fetchCategoriasPadre } from '../api/categorias';  // ← Importa el nuevo método
+import { fetchCategoriasPadre, fetchSubcategorias } from '../api/categorias'; // Usamos también cliente para subcategorías
 import { useNavigate } from 'react-router-dom';
 
 export default function Productos() {
@@ -27,7 +27,7 @@ export default function Productos() {
   const [subcategorias, setSubcategorias] = useState([]); // subcategorías hijas
   const nav = useNavigate();
 
-  // 1) Refrescar productos con filtros
+  // Refrescar lista de productos
   const refresh = async () => {
     setLoading(true);
     try {
@@ -41,7 +41,7 @@ export default function Productos() {
     }
   };
 
-  // 2) Cargar solo categorías padre
+  // Cargar solo categorías padre
   const loadCategorias = async () => {
     try {
       const res = await fetchCategoriasPadre();
@@ -51,30 +51,27 @@ export default function Productos() {
     }
   };
 
-  // 3) Cargar subcategorías según categoría seleccionada
+  // Cargar subcategorías según categoría seleccionada
   const loadSubcategorias = async (categoriaId) => {
     if (!categoriaId) {
       setSubcategorias([]);
       return;
     }
     try {
-      const response = await fetch(
-        `http://localhost:3001/api/categorias/${categoriaId}/subcategorias`
-      );
-      const data = await response.json();
-      setSubcategorias(Array.isArray(data) ? data : []);
+      const res = await fetchSubcategorias(categoriaId);
+      setSubcategorias(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       console.error('Error cargando subcategorías:', err);
     }
   };
 
-  // Efecto: recarga productos y categorías padre al montar y cuando cambien filtros
+  // Al montar: cargar categorías y productos
   useEffect(() => {
     loadCategorias();
     refresh();
   }, []);
 
-  // Efecto: cada vez que cambie categoría o subcategoría, refresca productos
+  // Cuando cambian filtros: recargar productos
   useEffect(() => {
     refresh();
   }, [search, categoria, subcategoria]);
@@ -91,43 +88,41 @@ export default function Productos() {
   const handleSubcategoriaChange = e => setSubcategoria(e.target.value);
 
   const columns = [
-   {
-  Header: 'Imagen',
-  accessor: row =>
-    row.imagen_url ? (
-      <Tooltip
-        title={
-          <img
-            src={row.imagen_url}
-            alt={row.nombre}
-            style={{
-              width: 200,
-              height: 200,
-              objectFit: 'cover',
-              borderRadius: 4,
-            }}
-          />
-        }
-        arrow
-        placement="right"
-        interactive
-      >
-        <img
-          src={row.imagen_url}
-          alt={row.nombre}
-          style={{
-            width: 40,
-            height: 40,
-            objectFit: 'cover',
-            borderRadius: 4,
-            cursor: 'pointer',
-          }}
-        />
-      </Tooltip>
-    ) : (
-      '—'
-    )
-},
+    {
+      Header: 'Imagen',
+      accessor: row =>
+        row.imagen_url ? (
+          <Tooltip
+            title={
+              <img
+                src={row.imagen_url}
+                alt={row.nombre}
+                style={{
+                  width: 200,
+                  height: 200,
+                  objectFit: 'cover',
+                  borderRadius: 4,
+                }}
+              />
+            }
+            arrow
+            placement="right"
+            interactive
+          >
+            <img
+              src={row.imagen_url}
+              alt={row.nombre}
+              style={{
+                width: 40,
+                height: 40,
+                objectFit: 'cover',
+                borderRadius: 4,
+                cursor: 'pointer',
+              }}
+            />
+          </Tooltip>
+        ) : '—'
+    },
     { Header: 'Nombre', accessor: 'nombre' },
     { Header: 'Descripción', accessor: 'descripcion' },
     { Header: 'Precio Compra', accessor: 'precio_compra' },
@@ -152,7 +147,6 @@ export default function Productos() {
       </Stack>
 
       <Stack direction="row" spacing={2} mb={2}>
-        {/* Búsqueda */}
         <TextField
           label="Buscar Producto"
           variant="outlined"
@@ -161,7 +155,6 @@ export default function Productos() {
           onChange={handleSearchChange}
         />
 
-        {/* Filtro Categoría (solo padres) */}
         <FormControl variant="outlined" fullWidth>
           <InputLabel>Categoría</InputLabel>
           <Select value={categoria} onChange={handleCategoriaChange} label="Categoría">
@@ -172,13 +165,13 @@ export default function Productos() {
           </Select>
         </FormControl>
 
-        {/* Filtro Subcategoría */}
         <FormControl variant="outlined" fullWidth>
           <InputLabel>Subcategoría</InputLabel>
           <Select
             value={subcategoria}
             onChange={handleSubcategoriaChange}
             label="Subcategoría"
+            disabled={!categoria}
           >
             <MenuItem value="">Todas</MenuItem>
             {subcategorias.map(sub => (

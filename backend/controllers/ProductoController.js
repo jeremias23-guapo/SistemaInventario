@@ -1,18 +1,30 @@
 const productoService = require('../services/ProductoService');
 
+
+
 exports.getProductos = async (req, res) => {
   try {
-    const { search, categoriaId } = req.query;  // Obtener los filtros de la query string
+    // Ahora extraemos subcategoriaId además de search y categoriaId
+    const {
+      search = '',
+      categoriaId = '',
+      subcategoriaId = ''
+    } = req.query;
+
     const filters = {
-      search: search || '',
-      categoriaId: categoriaId || ''
+      search,
+      categoriaId,
+      subcategoriaId
     };
-    const lista = await productoService.listarProductos(filters);  // Pasar los filtros al servicio
+
+    const lista = await productoService.listarProductos(filters);
     res.json(lista);
   } catch (err) {
+    console.error('Error cargando productos:', err);
     res.status(500).json({ error: err.message });
   }
 };
+
 
 exports.getProducto = async (req, res) => {
   try {
