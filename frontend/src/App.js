@@ -2,7 +2,7 @@
 import React, { useContext } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
-import Login from './pages/Login';            // <— tu página de Login
+import Login from './pages/Login';
 import { AuthContext } from './contexts/AuthContext';
 
 import Productos from './pages/Productos';
@@ -22,7 +22,10 @@ import Transacciones from './pages/Transacciones';
 import OrdenesCompra from './pages/OrdenesCompras';
 import OrdenCompraForm from './pages/OrdenCompraForm';
 import OrdenCompraDetalle from './pages/OrdenCompraDetalle';
+import Usuarios from './pages/Usuarios';
+import UsuarioForm from './pages/UsuarioForm';
 
+// Wrapper de rutas privadas
 function PrivateRoute({ children }) {
   const { token } = useContext(AuthContext);
   return token ? children : <Navigate to="/login" replace />;
@@ -31,20 +34,13 @@ function PrivateRoute({ children }) {
 export default function App() {
   return (
     <Routes>
-      {/* Ruta pública para login */}
+      {/* Ruta pública */}
       <Route path="/login" element={<Login />} />
 
       {/* Rutas protegidas */}
-      <Route
-        path="/"
-        element={
-          <PrivateRoute>
-            <Layout />
-          </PrivateRoute>
-        }
-      >
+      <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
         {/* Redirige / a /productos */}
-        <Route index element={<Navigate to="/productos" replace />} />
+        <Route index element={<Navigate to="productos" replace />} />
 
         {/* Productos */}
         <Route path="productos" element={<Productos />} />
@@ -77,7 +73,7 @@ export default function App() {
         <Route path="ventas/editar/:id" element={<VentaForm />} />
         <Route path="ventas/ver/:id" element={<VentaDetalle />} />
 
-        {/* Ordenes de Compra */}
+        {/* Órdenes de compra */}
         <Route path="ordenes_compra" element={<OrdenesCompra />} />
         <Route path="ordenes_compra/nuevo" element={<OrdenCompraForm />} />
         <Route path="ordenes_compra/editar/:id" element={<OrdenCompraForm />} />
@@ -86,9 +82,17 @@ export default function App() {
         {/* Transacciones */}
         <Route path="transacciones" element={<Transacciones />} />
 
-        {/* Cualquier otra ruta redirige a /productos */}
-        <Route path="*" element={<Navigate to="/productos" replace />} />
+        {/* Usuarios */}
+        <Route path="usuarios" element={<Usuarios />} />
+        <Route path="usuarios/nuevo" element={<UsuarioForm />} />
+        <Route path="usuarios/editar/:id" element={<UsuarioForm />} />
+
+        {/* Cualquier ruta desconocida redirige a /productos */}
+        <Route path="*" element={<Navigate to="productos" replace />} />
       </Route>
+
+      {/* Si ninguna coincide, redirige a login */}
+      <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );
 }

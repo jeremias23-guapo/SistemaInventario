@@ -81,7 +81,13 @@ export default function Layout() {
             <ListItemIcon><Label /></ListItemIcon>
             <ListItemText primary="Marcas" />
           </ListItemButton>
+
+          <ListItemButton onClick={() => navigate('/usuarios')}>
+            <ListItemIcon><Label /></ListItemIcon>
+            <ListItemText primary="Usuarios" />
+          </ListItemButton>
         </List>
+        
       </Drawer>
 
       {/* Main Content */}
