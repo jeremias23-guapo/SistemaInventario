@@ -21,12 +21,12 @@ import {
 } from '@mui/icons-material';
 import { fetchCategorias, deleteCategoria } from '../api/categorias'; // Asegúrate que la ruta a tu API sea correcta
 import { useNavigate } from 'react-router-dom';
-
+import { useLoading } from '../contexts/LoadingContext';
 export default function Categorias() {
   const [data, setData] = useState([]);
   const [openMap, setOpenMap] = useState({});
   const nav = useNavigate();
-
+ const { start, stop } = useLoading();
   // Carga o refresca la lista de categorías desde el servidor
   const refresh = async () => {
     try {
@@ -39,23 +39,38 @@ export default function Categorias() {
   };
 
   useEffect(() => {
-    refresh();
-  }, []);
+    (async () => {
+      try {
+        await refresh();
+      } catch (error) {
+        console.error("Error al cargar las categorías:", error);
+      } finally {
+        stop(); // <- apaga overlay tras el primer render/carga
+      }
+    })();
+  }, [stop]);
 
   // Alterna el estado (abierto/cerrado) de una categoría padre
   const toggle = id => {
     setOpenMap(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  // Lógica para eliminar una categoría
-  const handleBorrar = id => {
-    if (window.confirm('¿Seguro que quieres eliminar esta categoría? Al hacerlo, los productos asociados podrían quedar sin categoría.')) {
-      deleteCategoria(id).then(() => {
-        refresh(); // Vuelve a cargar los datos para reflejar el cambio
-      }).catch(error => {
-        console.error("Error al eliminar la categoría:", error);
-        // Notificar al usuario sobre el error
-      });
+  // 👉 4) ELIMINAR con overlay durante la acción y recarga
+  const handleBorrar = async (id) => {
+    const ok = window.confirm(
+      '¿Seguro que quieres eliminar esta categoría? Al hacerlo, los productos asociados podrían quedar sin categoría.'
+    );
+    if (!ok) return;
+
+    start(); // <- muestra overlay para esta operación
+    try {
+      await deleteCategoria(id);
+      await refresh(); // <- recarga datos
+    } catch (error) {
+      console.error("Error al eliminar la categoría:", error);
+      // aquí podrías mostrar una notificación al usuario
+    } finally {
+      stop(); // <- apaga overlay cuando todo termina
     }
   };
 

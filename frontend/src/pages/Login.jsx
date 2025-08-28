@@ -11,29 +11,40 @@ import {
   Button,
   Alert,
   InputAdornment,
-  IconButton
+  IconButton,
+  CircularProgress
 } from '@mui/material';
 import { Visibility, VisibilityOff } from '@mui/icons-material';
 import { AuthContext } from '../contexts/AuthContext';
+import { useLoading } from '../contexts/LoadingContext'; // <-- loader global
 
 export default function Login() {
-  const [form, setForm]       = useState({ username: '', password: '' });
-  const [error, setError]     = useState('');
+  const [form, setForm] = useState({ username: '', password: '' });
+  const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const { login }             = useContext(AuthContext);
-  const navigate              = useNavigate();
+  const [submitting, setSubmitting] = useState(false); // spinner de botón
 
-  const handleChange = e =>
+  const { login } = useContext(AuthContext);
+  const { start, stop } = useLoading();                // overlay global
+  const navigate = useNavigate();
+
+  const handleChange = (e) =>
     setForm({ ...form, [e.target.name]: e.target.value });
 
-  const handleSubmit = async e => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setSubmitting(true);
+    start(); // muestra overlay global
+
     try {
       await login(form);
       navigate('/');
     } catch (err) {
-      setError(err.message);
+      setError(err?.message || 'Error al iniciar sesión');
+    } finally {
+      stop();           // oculta overlay
+      setSubmitting(false);
     }
   };
 
@@ -52,6 +63,7 @@ export default function Login() {
             <Typography variant="h5" align="center" gutterBottom>
               Iniciar Sesión
             </Typography>
+
             {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
             <Box component="form" onSubmit={handleSubmit} noValidate>
@@ -63,6 +75,7 @@ export default function Login() {
                 fullWidth
                 margin="normal"
                 required
+                autoFocus
               />
 
               <TextField
@@ -78,14 +91,14 @@ export default function Login() {
                   endAdornment: (
                     <InputAdornment position="end">
                       <IconButton
-                        onClick={() => setShowPassword(show => !show)}
+                        onClick={() => setShowPassword((s) => !s)}
                         edge="end"
                         aria-label="toggle password visibility"
                       >
                         {showPassword ? <VisibilityOff /> : <Visibility />}
                       </IconButton>
                     </InputAdornment>
-                  )
+                  ),
                 }}
               />
 
@@ -95,8 +108,14 @@ export default function Login() {
                 fullWidth
                 size="large"
                 sx={{ mt: 3 }}
+                disabled={submitting}
+                endIcon={
+                  submitting ? (
+                    <CircularProgress size={20} sx={{ ml: 1 }} />
+                  ) : null
+                }
               >
-                Entrar
+                {submitting ? 'Ingresando...' : 'Entrar'}
               </Button>
             </Box>
           </CardContent>

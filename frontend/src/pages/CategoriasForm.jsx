@@ -11,12 +11,14 @@ import {
   FormControl,
   InputLabel,
   Select,
+  Checkbox,
+  FormControlLabel,
 } from '@mui/material';
 import {
   createCategoria,
   fetchCategoria,
   updateCategoria,
-  fetchCategorias,
+  fetchCategoriasPadre,
 } from '../api/categorias';
 import { useNavigate, useParams } from 'react-router-dom';
 
@@ -24,33 +26,52 @@ export default function CategoriaForm() {
   const { id } = useParams();
   const nav = useNavigate();
 
-  // Guardamos parent_id como string para que MUI Select lo maneje bien
   const [form, setForm] = useState({ nombre: '', parent_id: '' });
-  const [allCats, setAllCats] = useState([]);
+  const [parentOptions, setParentOptions] = useState([]);
+  const [esPadre, setEsPadre] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [esPadreEditable, setEsPadreEditable] = useState(true);
 
-  // Carga todas las categorías para el dropdown
-  const loadCategorias = async () => {
-    const res = await fetchCategorias();
-    setAllCats(res.data);
+  // Mostrar checkbox:
+  // - crear => editable
+  // - editar padre => visible pero deshabilitado
+  // - editar hija => oculto
+  const showEsPadreCheckbox = !id || esPadre;
+
+  const loadCategoriasPadre = async () => {
+    const res = await fetchCategoriasPadre();
+    setParentOptions(res.data || []);
   };
 
   useEffect(() => {
-    loadCategorias();
+    const init = async () => {
+      setLoading(true);
+      await loadCategoriasPadre();
 
-    if (id) {
-      // Si estamos editando, cargamos los datos
-      fetchCategoria(id).then((r) => {
+      if (id) {
+        const r = await fetchCategoria(id);
         const { nombre, parent_id } = r.data;
         setForm({
           nombre,
-          // Convertimos null -> '' para que Select muestre el placeholder
           parent_id: parent_id != null ? String(parent_id) : '',
         });
-      });
-    }
+        const isRoot = parent_id == null;
+        setEsPadre(isRoot);
+        // si es padre (root), el checkbox no se puede desactivar
+        setEsPadreEditable(!isRoot);
+      } else {
+        // creando => por defecto padre editable
+        setEsPadre(true);
+        setForm({ nombre: '', parent_id: '' });
+        setEsPadreEditable(true);
+      }
+
+      setLoading(false);
+    };
+
+    init();
   }, [id]);
 
-  // Manejador unificado para TextField y Select
   const handleChange = (e) => {
     const { name, value } = e.target;
     setForm((prev) => ({
@@ -59,14 +80,12 @@ export default function CategoriaForm() {
     }));
   };
 
-  // Envío del formulario
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Preparamos payload, convirtiendo parent_id a número o null
     const payload = {
-      nombre: form.nombre,
-      parent_id: form.parent_id ? Number(form.parent_id) : null,
+      nombre: form.nombre.trim(),
+      parent_id: esPadre ? null : (form.parent_id ? Number(form.parent_id) : null),
     };
 
     if (id) {
@@ -77,6 +96,16 @@ export default function CategoriaForm() {
 
     nav('/categorias');
   };
+
+  if (loading) {
+    return (
+      <Container maxWidth="sm" sx={{ mt: 4 }}>
+        <Paper sx={{ p: 3 }}>
+          <Typography>Cargando…</Typography>
+        </Paper>
+      </Container>
+    );
+  }
 
   return (
     <Container maxWidth="sm" sx={{ mt: 4 }}>
@@ -94,10 +123,31 @@ export default function CategoriaForm() {
               value={form.nombre}
               onChange={handleChange}
               required
+              inputProps={{ maxLength: 100 }}
             />
 
+            {/* Checkbox: Es categoría padre */}
+            {showEsPadreCheckbox && (
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={esPadre}
+                    disabled={!esPadreEditable} // deshabilitado si es padre en edición
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setEsPadre(checked);
+                      if (checked) {
+                        setForm((prev) => ({ ...prev, parent_id: '' }));
+                      }
+                    }}
+                  />
+                }
+                label="Es categoría padre (no tiene padre)"
+              />
+            )}
+
             {/* Select de Categoría Padre */}
-            <FormControl fullWidth>
+            <FormControl fullWidth disabled={esPadre}>
               <InputLabel id="parent-label">Categoría Padre</InputLabel>
               <Select
                 labelId="parent-label"
@@ -109,7 +159,7 @@ export default function CategoriaForm() {
                 <MenuItem value="">
                   <em>— Ninguna —</em>
                 </MenuItem>
-                {allCats
+                {parentOptions
                   .filter((c) => !id || c.id !== Number(id))
                   .map((c) => (
                     <MenuItem key={c.id} value={String(c.id)}>

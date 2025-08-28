@@ -27,7 +27,8 @@ class VentaService {
       cliente_id:  data.cliente_id,
       fecha:       new Date(),
       estado:      data.estado || 'pendiente',
-      total_venta: totalVenta
+      total_venta: totalVenta,
+      usuario_id:  data.usuario_id
     });
 
     // 3) Procesar cada línea con lotes por separado

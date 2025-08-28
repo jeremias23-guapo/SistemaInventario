@@ -14,30 +14,26 @@ import {
 import { Visibility, Edit, Delete } from '@mui/icons-material';
 
 /**
- * DataTable component accepts:
+ * DataTable component acepta:
  *  - rows: array de objetos con datos
  *  - columns: opcional array de { Header: string, accessor: string|function }
- *    Si no se provee columns, deriva las columnas de las keys del primer row
- *  - onView: función(row) para “ver detalle”
- *  - onEdit: función(row) para “editar”
- *  - onDelete: función(row) para “eliminar”
+ *  - onView, onEdit, onDelete: callbacks(row)
+ *  - actionGuard: { isAdmin: bool, isLocked: (row)=>bool } para habilitar/deshabilitar botones
  */
 export default function DataTable({
   rows,
   columns,
   onView,
   onEdit,
-  onDelete
+  onDelete,
+  actionGuard
 }) {
-  // Nos aseguramos de que rows sea siempre un array
   const safeRows = Array.isArray(rows) ? rows : [];
 
-  // Si no se pasaron columnas, derivamos de las keys del primer objeto
   const derivedColumns = safeRows.length
     ? Object.keys(safeRows[0]).map(key => ({ Header: key, accessor: key }))
     : [];
 
-  // Usamos columns únicamente si viene no vacío; si no, usamos derivedColumns
   const cols = Array.isArray(columns) && columns.length ? columns : derivedColumns;
 
   return (
@@ -62,7 +58,7 @@ export default function DataTable({
                 return <TableCell key={col.Header}>{value ?? ''}</TableCell>;
               })}
               <TableCell align="center">
-                {/* Botón “Ver detalle” (ícono ojo) */}
+                {/* Ver */}
                 {onView && (
                   <IconButton
                     size="small"
@@ -72,21 +68,31 @@ export default function DataTable({
                     <Visibility fontSize="inherit" />
                   </IconButton>
                 )}
-                {/* Botón “Editar” (ícono lápiz) */}
+                {/* Editar */}
                 {onEdit && (
                   <IconButton
                     size="small"
                     title="Editar"
+                    disabled={
+                      actionGuard &&
+                      !actionGuard.isAdmin &&
+                      actionGuard.isLocked?.(row)
+                    }
                     onClick={() => onEdit(row)}
                   >
                     <Edit fontSize="inherit" />
                   </IconButton>
                 )}
-                {/* Botón “Eliminar” (ícono papelera) */}
+                {/* Eliminar */}
                 {onDelete && (
                   <IconButton
                     size="small"
                     title="Eliminar"
+                    disabled={
+                      actionGuard &&
+                      !actionGuard.isAdmin &&
+                      actionGuard.isLocked?.(row)
+                    }
                     onClick={() => onDelete(row)}
                   >
                     <Delete fontSize="inherit" />
@@ -118,7 +124,11 @@ DataTable.propTypes = {
   ),
   onView: PropTypes.func,
   onEdit: PropTypes.func,
-  onDelete: PropTypes.func
+  onDelete: PropTypes.func,
+  actionGuard: PropTypes.shape({
+    isAdmin: PropTypes.bool,
+    isLocked: PropTypes.func
+  })
 };
 
 DataTable.defaultProps = {
@@ -126,5 +136,6 @@ DataTable.defaultProps = {
   columns: [],
   onView: null,
   onEdit: null,
-  onDelete: null
+  onDelete: null,
+  actionGuard: null
 };

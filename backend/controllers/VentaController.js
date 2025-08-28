@@ -1,6 +1,6 @@
 // backend/controllers/VentaController.js
 const VentaService = require('../services/VentaService');
-
+const authenticate = require('../middlewares/authenticate'); // si no lo tenías aquí
 exports.listAll = async (req, res, next) => {
   try {
     const ventas = await VentaService.listAll();
@@ -29,8 +29,12 @@ exports.getOne = async (req, res, next) => {
 
 exports.create = async (req, res, next) => {
   try {
-    const newVenta = await VentaService.create(req.body);
-    res.status(201).json(newVenta);
+      // usuario que registra la venta viene del token
+   const usuarioId = req.user?.sub; // payload: { sub, username, rol, ... }
+  const venta = await VentaService.create({ ...req.body, usuario_id: usuarioId });
+    res.status(201).json(venta);
+    console.log('JWT user payload en create venta:', req.user);
+
   } catch (err) {
     next(err);
   }
@@ -46,7 +50,14 @@ exports.cancelarVenta = async (req, res, next) => {
 };
 exports.update = async (req, res, next) => {
   try {
-    const updatedVenta = await VentaService.update(req.params.id, req.body);
+    const id = req.params.id;          // 👈 aquí obtienes el id de la URL
+    const usuarioId = req.user?.sub;   // id del usuario que actualiza (del token)
+
+    const updatedVenta = await VentaService.update(id, {
+      ...req.body,
+      usuario_id: usuarioId
+    });
+
     res.json(updatedVenta);
   } catch (err) {
     next(err);

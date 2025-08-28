@@ -4,9 +4,9 @@ class VentaRepo {
   // 1) Insertar cabecera de venta, devuelve insertId
   static async insertCabecera(conn, { codigo, cliente_id, fecha, estado, total_venta }) {
     const [result] = await conn.query(
-      `INSERT INTO ventas (codigo, cliente_id, fecha, estado, total_venta)
-       VALUES (?, ?, ?, ?, ?)`,
-      [codigo, cliente_id, fecha, estado, total_venta]
+      `INSERT INTO ventas (codigo, cliente_id, fecha, estado, total_venta,usuario_id)
+       VALUES (?, ?, ?, ?, ?,?)`,
+      [codigo, cliente_id, fecha, estado, total_venta,usuario_id]
     );
     return result.insertId;
   }
@@ -86,9 +86,10 @@ static async search({ codigo, fecha }) {
   static async findAll() {
     const [rows] = await pool.query(
       `SELECT v.id, v.codigo, v.cliente_id, c.nombre AS cliente_nombre,
-              v.fecha, v.estado, v.total_venta
+              v.fecha, v.estado, v.total_venta, u.username AS usuario_nombre
        FROM ventas v
        JOIN clientes c ON v.cliente_id = c.id
+       LEFT JOIN usuarios u ON u.id = v.usuario_id
        ORDER BY v.fecha DESC`
     );
     return rows;

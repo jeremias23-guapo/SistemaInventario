@@ -1,3 +1,4 @@
+// frontend/src/pages/Productos.jsx
 import React, { useEffect, useState } from 'react';
 import Tooltip from '@mui/material/Tooltip';
 import {
@@ -14,8 +15,9 @@ import {
 } from '@mui/material';
 import DataTable from '../components/DataTable';
 import { fetchProductos } from '../api/productos';
-import { fetchCategoriasPadre, fetchSubcategorias } from '../api/categorias'; // Usamos también cliente para subcategorías
+import { fetchCategoriasPadre, fetchSubcategorias } from '../api/categorias';
 import { useNavigate } from 'react-router-dom';
+import { useLoading } from '../contexts/LoadingContext'; // 👈 agregado
 
 export default function Productos() {
   const [data, setData] = useState([]);
@@ -26,6 +28,8 @@ export default function Productos() {
   const [categorias, setCategorias] = useState([]);      // categorías padre
   const [subcategorias, setSubcategorias] = useState([]); // subcategorías hijas
   const nav = useNavigate();
+
+  const { start, stop } = useLoading(); // 👈 overlay global
 
   // Refrescar lista de productos
   const refresh = async () => {
@@ -65,15 +69,22 @@ export default function Productos() {
     }
   };
 
-  // Al montar: cargar categorías y productos
+  // Al montar: cargar categorías y productos y luego apagar overlay
   useEffect(() => {
-    loadCategorias();
-    refresh();
+    (async () => {
+      try {
+        await Promise.all([loadCategorias(), refresh()]);
+      } finally {
+        stop(); // 👈 apagamos overlay al terminar carga inicial
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Cuando cambian filtros: recargar productos
+  // Cuando cambian filtros: recargar productos (solo spinner local)
   useEffect(() => {
     refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, categoria, subcategoria]);
 
   const handleSearchChange = e => setSearch(e.target.value);
@@ -86,6 +97,16 @@ export default function Productos() {
   };
 
   const handleSubcategoriaChange = e => setSubcategoria(e.target.value);
+
+  // 👇 Navegar mostrando overlay
+  const goToNuevo = () => {
+    start();
+    nav('/productos/nuevo');
+  };
+  const goToEditar = (id) => {
+    start();
+    nav(`/productos/editar/${id}`);
+  };
 
   const columns = [
     {
@@ -141,7 +162,7 @@ export default function Productos() {
     <Container sx={{ mt: 4 }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
         <Typography variant="h5">Productos</Typography>
-        <Button variant="contained" onClick={() => nav('/productos/nuevo')}>
+        <Button variant="contained" onClick={goToNuevo}>
           Nuevo Producto
         </Button>
       </Stack>
@@ -186,7 +207,7 @@ export default function Productos() {
           rows={data}
           columns={columns}
           loading={loading}
-          onEdit={row => nav(`/productos/editar/${row.id}`)}
+          onEdit={row => goToEditar(row.id)}  // 👈 con overlay
           onDelete={row => {/* lógica de eliminar */}}
         />
       </Paper>
