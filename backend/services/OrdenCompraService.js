@@ -22,6 +22,10 @@ class OrdenCompraService {
     return { totalOrden, lineasConSub };
   }
 
+ static async search(filters) {
+    return OrdenCompraRepo.search(filters); // { codigo, fecha }
+  }
+  
   static async create(data) {
     const conn = await pool.getConnection();
     try {

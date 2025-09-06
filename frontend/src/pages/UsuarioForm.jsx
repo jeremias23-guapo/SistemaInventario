@@ -10,7 +10,8 @@ import {
   MenuItem,
   Button,
   CircularProgress,
-  Alert
+  Alert,
+  Stack,
 } from '@mui/material';
 import {
   getRoles,
@@ -18,11 +19,13 @@ import {
   updateUsuario,
   fetchUsuario
 } from '../api/usuarios';
+import { useLoading } from '../contexts/LoadingContext'; // 👈 overlay global
 
 export default function UsuarioForm() {
   const { id } = useParams();
   const isEdit = Boolean(id);
   const navigate = useNavigate();
+  const { start, stop } = useLoading(); // 👈
 
   const [form, setForm] = useState({
     nombre: '',
@@ -31,13 +34,16 @@ export default function UsuarioForm() {
     rol_id: ''
   });
   const [roles, setRoles] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false); // spinner local para edición
   const [error, setError] = useState('');
+
+  // Al entrar al form: apaga overlay global (la lista lo dejó encendido)
+  useEffect(() => { stop(); }, [stop]);
 
   // Carga roles al montar
   useEffect(() => {
     getRoles()
-      .then(data => setRoles(data))
+      .then(res => setRoles(Array.isArray(res?.data) ? res.data : (res ?? [])))
       .catch(() => setError('No se pudieron cargar los roles'));
   }, []);
 
@@ -46,12 +52,13 @@ export default function UsuarioForm() {
     if (!isEdit) return;
     setLoading(true);
     fetchUsuario(id)
-      .then(data => {
+      .then(res => {
+        const data = res?.data ?? res ?? {};
         setForm({
-          nombre: data.nombre,
-          username: data.username,
-          password: '',       // dejamos vacío para seguridad
-          rol_id: data.rol_id
+          nombre: data.nombre || '',
+          username: data.username || '',
+          password: '',       // vacío por seguridad
+          rol_id: data.rol_id ?? ''
         });
       })
       .catch(() => setError('No se pudo cargar el usuario'))
@@ -66,16 +73,23 @@ export default function UsuarioForm() {
   const handleSubmit = async e => {
     e.preventDefault();
     setError('');
+    start(); // 👈 overlay durante guardar + navegación
     try {
       if (isEdit) {
         await updateUsuario(id, form);
       } else {
         await createUsuario(form);
       }
-      navigate('/usuarios');
+      navigate('/usuarios'); // la lista apagará overlay al montar
     } catch (err) {
-      setError(err.message || 'Error al guardar');
+      setError(err?.message || 'Error al guardar');
+      stop(); // 👈 si no navega por error, apaga overlay
     }
+  };
+
+  const handleCancel = () => {
+    start();     // 👈 overlay durante la navegación
+    navigate('/usuarios');
   };
 
   if (loading) {
@@ -147,14 +161,14 @@ export default function UsuarioForm() {
           ))}
         </Select>
 
-        <Button
-          type="submit"
-          variant="contained"
-          fullWidth
-          sx={{ mt: 3 }}
-        >
-          {isEdit ? 'Guardar Cambios' : 'Crear Usuario'}
-        </Button>
+        <Stack direction="row" spacing={2} sx={{ mt: 3 }}>
+          <Button variant="outlined" fullWidth onClick={handleCancel}>
+            Cancelar
+          </Button>
+          <Button type="submit" variant="contained" fullWidth>
+            {isEdit ? 'Guardar Cambios' : 'Crear Usuario'}
+          </Button>
+        </Stack>
       </Box>
     </Container>
   );

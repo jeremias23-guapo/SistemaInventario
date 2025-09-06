@@ -4,7 +4,9 @@ import {
   Box, Drawer, List, ListItemButton, ListItemIcon,
   ListItemText, Toolbar, AppBar, Typography, IconButton,
   Menu, MenuItem, Divider
+
 } from '@mui/material';
+import DashboardIcon from '@mui/icons-material/Dashboard';
 import {
   Inventory2, ShoppingCart, Category, MonetizationOn,
   People, Business, History, Label, Logout
@@ -92,6 +94,13 @@ export default function Layout() {
         <Toolbar />
         <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           <List sx={{ flexGrow: 1 }}>
+            
+
+
+
+
+
+
             <ListItemButton
               onClick={() => handleNav('/productos')}
               selected={isActive('/productos')}
@@ -99,6 +108,7 @@ export default function Layout() {
               <ListItemIcon><Inventory2 /></ListItemIcon>
               <ListItemText primary="Productos" />
             </ListItemButton>
+
 
             <ListItemButton
               onClick={() => handleNav('/ordenes_compra')}
@@ -152,6 +162,7 @@ export default function Layout() {
               onClick={() => handleNav('/marcas')}
               selected={isActive('/marcas')}
             >
+              
               <ListItemIcon><Label /></ListItemIcon>
               <ListItemText primary="Marcas" />
             </ListItemButton>
@@ -165,6 +176,18 @@ export default function Layout() {
                 <ListItemText primary="Usuarios" />
               </ListItemButton>
             )}
+  {/* REPORTES */}
+  <ListItemButton
+    onClick={() => handleNav('/reportes')}
+   selected={isActive('/reportes')}
+  >
+    <ListItemIcon><History /></ListItemIcon>
+   <ListItemText primary="Reportes" />
+  </ListItemButton>
+
+
+
+
           </List>
 
           <Divider />

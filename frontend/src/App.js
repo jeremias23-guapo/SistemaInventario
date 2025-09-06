@@ -10,6 +10,7 @@ import { LoadingProvider } from './contexts/LoadingContext';
 import LoaderOverlay from './components/LoaderOverlay';
 // <<<
 
+// Páginas existentes
 import Productos from './pages/Productos';
 import ProductoForm from './pages/ProductoForm';
 import Clientes from './pages/Clientes';
@@ -30,6 +31,10 @@ import OrdenCompraDetalle from './pages/OrdenCompraDetalle';
 import Usuarios from './pages/Usuarios';
 import UsuarioForm from './pages/UsuarioForm';
 
+// NUEVAS páginas
+
+import Reportes from './pages/Reportes';
+
 // Wrapper de rutas privadas
 function PrivateRoute({ children }) {
   const { token } = useContext(AuthContext);
@@ -45,8 +50,12 @@ export default function App() {
 
         {/* Rutas protegidas */}
         <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
-          {/* Redirige / a /productos */}
+          {/* Redirige / a /productos (puedes cambiar a "dashboard" si quieres) */}
           <Route index element={<Navigate to="productos" replace />} />
+
+
+          {/* Reportes (visible para todos los usuarios autenticados) */}
+          <Route path="reportes" element={<Reportes />} />
 
           {/* Productos */}
           <Route path="productos" element={<Productos />} />
@@ -88,7 +97,7 @@ export default function App() {
           {/* Transacciones */}
           <Route path="transacciones" element={<Transacciones />} />
 
-          {/* Usuarios */}
+          {/* Usuarios (si tu Layout ya oculta/permite por rol, aquí puede quedar abierto) */}
           <Route path="usuarios" element={<Usuarios />} />
           <Route path="usuarios/nuevo" element={<UsuarioForm />} />
           <Route path="usuarios/editar/:id" element={<UsuarioForm />} />

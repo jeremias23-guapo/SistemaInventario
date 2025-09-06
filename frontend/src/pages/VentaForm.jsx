@@ -12,18 +12,16 @@ import {
   Grid
 } from '@mui/material';
 import { AddCircle, RemoveCircle } from '@mui/icons-material';
-import {
-  fetchVenta,
-  createVenta,
-  updateVenta
-} from '../api/ventas';
+import { fetchVenta, createVenta, updateVenta } from '../api/ventas';
 import { fetchProductos } from '../api/productos';
 import { fetchClientes } from '../api/clientes'; // Asegúrate de que fetchClientes devuelva un array
 import { useNavigate, useParams } from 'react-router-dom';
+import { useLoading } from '../contexts/LoadingContext'; // 👈 overlay global
 
 export default function VentaForm() {
   const { id } = useParams();
   const nav = useNavigate();
+  const { start, stop } = useLoading(); // 👈
 
   // ------------------------
   // 1) Estado de la cabecera
@@ -45,6 +43,9 @@ export default function VentaForm() {
   const [productos, setProductos] = useState([]);
   const [clientes, setClientes] = useState([]);
 
+  // Al entrar al form: apaga el overlay global (la lista lo dejó encendido)
+  useEffect(() => { stop(); }, [stop]);
+
   // ---------------------------------------------------
   // 4) useEffect: cargar catálogos y, si editando, datos
   // ---------------------------------------------------
@@ -52,8 +53,8 @@ export default function VentaForm() {
     // 4.a) Cargar productos
     fetchProductos()
       .then(r => {
-        // r.data ya es el array de productos
-        setProductos(r.data || []);
+        const arr = Array.isArray(r?.data) ? r.data : (Array.isArray(r) ? r : []);
+        setProductos(arr || []);
       })
       .catch(err => {
         console.error('Error cargando productos:', err);
@@ -62,8 +63,8 @@ export default function VentaForm() {
 
     // 4.b) Cargar clientes
     fetchClientes()
-      .then(arr => {
-        // Aquí arr ES directo el array de clientes
+      .then(r => {
+        const arr = Array.isArray(r?.data) ? r.data : (Array.isArray(r) ? r : []);
         setClientes(arr || []);
       })
       .catch(err => {
@@ -75,21 +76,21 @@ export default function VentaForm() {
     if (id) {
       fetchVenta(id)
         .then(r => {
-          // r.lineas podría venir undefined; forzamos a []
-          const fetchedLineas = Array.isArray(r.lineas) ? r.lineas : [];
+          const v = r?.data ?? r ?? {};
+          const fetchedLineas = Array.isArray(v.lineas) ? v.lineas : [];
 
           setCabecera({
-            codigo: r.codigo || '',
-            cliente_id: r.cliente_id?.toString() || '',
-            estado: r.estado || 'pendiente'
+            codigo: v.codigo || '',
+            cliente_id: v.cliente_id?.toString() || '',
+            estado: v.estado || 'pendiente'
           });
 
           // Mapear líneas al formato local
           setLineas(
             fetchedLineas.map(ln => ({
-              producto_id: ln.producto_id.toString(),
-              cantidad: ln.cantidad.toString(),
-              precio_unitario: ln.precio_unitario.toString(),
+              producto_id: (ln.producto_id ?? '').toString(),
+              cantidad: (ln.cantidad ?? '').toString(),
+              precio_unitario: (ln.precio_unitario ?? '').toString(),
               descuento: (ln.descuento || 0).toString()
             }))
           );
@@ -124,7 +125,7 @@ export default function VentaForm() {
   // -------------------------------------------------------------------
   const handleProductoSelect = (idx, productoId) => {
     const prod = productos.find(p => p.id.toString() === productoId);
-    const precioStr = prod ? prod.precio_venta.toString() : '';
+    const precioStr = prod ? String(prod.precio_venta ?? '') : '';
     setLineas(lines =>
       lines.map((ln, i) =>
         i === idx
@@ -208,17 +209,24 @@ export default function VentaForm() {
       }))
     };
 
+    start(); // 👈 overlay durante guardar + navegación
     try {
       if (id) {
         await updateVenta(id, payload);
       } else {
         await createVenta(payload);
       }
-      nav('/ventas');
+      nav('/ventas'); // la lista apagará el overlay al montar
     } catch (err) {
-      console.error('Error guardando venta', err.response?.data || err);
-      alert('Hubo un error: ' + (err.response?.data?.error || err.message));
+      console.error('Error guardando venta', err?.response?.data || err);
+      alert('Hubo un error: ' + (err?.response?.data?.error || err.message));
+      stop(); // 👈 si no navega por error, apaga overlay
     }
+  };
+
+  const handleCancel = () => {
+    start(); // 👈 overlay durante la navegación
+    nav('/ventas');
   };
 
   return (
@@ -397,7 +405,7 @@ export default function VentaForm() {
             <Stack direction="row" spacing={2} justifyContent="flex-end">
               <Button
                 variant="outlined"
-                onClick={() => nav('/ventas')}
+                onClick={handleCancel} // 👈 overlay + navegación
               >
                 Cancelar
               </Button>

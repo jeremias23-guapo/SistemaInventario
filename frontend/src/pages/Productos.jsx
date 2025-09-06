@@ -1,6 +1,7 @@
 // frontend/src/pages/Productos.jsx
 import React, { useEffect, useState } from 'react';
 import Tooltip from '@mui/material/Tooltip';
+
 import {
   Container,
   Button,
@@ -14,6 +15,10 @@ import {
   InputLabel
 } from '@mui/material';
 import DataTable from '../components/DataTable';
+import DateField from '../components/DateField';
+
+
+
 import { fetchProductos } from '../api/productos';
 import { fetchCategoriasPadre, fetchSubcategorias } from '../api/categorias';
 import { useNavigate } from 'react-router-dom';
@@ -153,8 +158,8 @@ export default function Productos() {
     { Header: 'Activo', accessor: row => (row.activo ? 'Sí' : 'No') },
     { Header: 'Categoría', accessor: row => `${row.categoria} › ${row.subcategoria}` },
     { Header: 'Marca', accessor: row => row.marca || '—' },
-    { Header: 'Creado', accessor: row => new Date(row.created_at).toLocaleString() },
-    { Header: 'Modificado', accessor: row => new Date(row.modified_at).toLocaleString() },
+   { Header: 'Creado',    accessor: row => <DateField value={row.created_at} /> },
+{ Header: 'Modificado',accessor: row => <DateField value={row.modified_at} /> },
     { Header: 'Eliminado', accessor: row => (row.is_deleted ? 'Sí' : 'No') }
   ];
 

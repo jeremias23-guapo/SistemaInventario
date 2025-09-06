@@ -17,46 +17,52 @@ import {
 import { useParams, useNavigate } from 'react-router-dom';
 import { fetchVenta } from '../api/ventas';
 import { fetchProductos } from '../api/productos';
+import { useLoading } from '../contexts/LoadingContext'; // 👈 overlay global
 
 export default function VentaDetail() {
   const { id } = useParams();
   const nav = useNavigate();
+  const { start, stop } = useLoading(); // 👈
 
   const [venta, setVenta] = useState(null);
   const [productosMap, setProductosMap] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // Apagar overlay global al montar (mantenemos spinner local)
+  useEffect(() => { stop(); }, [stop]);
+
   // 1) Cargar catálogo de productos para mostrar nombre
   useEffect(() => {
-    fetchProductos()
-      .then(r => {
-        // r.data es un array [{ id, nombre, ... }, ...]
+    (async () => {
+      try {
+        const r = await fetchProductos();
+        const arr = Array.isArray(r?.data) ? r.data : (Array.isArray(r) ? r : []);
         const map = {};
-        (r.data || []).forEach(p => {
-          map[p.id] = p.nombre;
-        });
+        arr.forEach(p => { map[p.id] = p.nombre; });
         setProductosMap(map);
-      })
-      .catch(err => {
+      } catch (err) {
         console.error('Error cargando productos:', err);
         // Si falla, seguiremos mostrando el ID en lugar del nombre
-      });
+      }
+    })();
   }, []);
 
   // 2) Cargar la venta completa (cabecera + lineas)
   useEffect(() => {
     setLoading(true);
-    fetchVenta(id)
-      .then(r => {
-        setVenta(r);
-        setLoading(false);
-      })
-      .catch(err => {
+    (async () => {
+      try {
+        const r = await fetchVenta(id);
+        const data = r?.data ?? r ?? null;
+        setVenta(data);
+      } catch (err) {
         console.error('Error cargando venta:', err);
         setError(err.response?.data?.error || err.message);
+      } finally {
         setLoading(false);
-      });
+      }
+    })();
   }, [id]);
 
   if (loading) {
@@ -71,7 +77,11 @@ export default function VentaDetail() {
     return (
       <Container sx={{ mt: 4 }}>
         <Typography color="error">Error: {error}</Typography>
-        <Button onClick={() => nav('/ventas')} sx={{ mt: 2 }} variant="contained">
+        <Button
+          onClick={() => { start(); nav('/ventas'); }} // 👈 overlay al volver
+          sx={{ mt: 2 }}
+          variant="contained"
+        >
           Volver a Ventas
         </Button>
       </Container>
@@ -82,7 +92,11 @@ export default function VentaDetail() {
     return (
       <Container sx={{ mt: 4 }}>
         <Typography>No se encontró la venta.</Typography>
-        <Button onClick={() => nav('/ventas')} sx={{ mt: 2 }} variant="contained">
+        <Button
+          onClick={() => { start(); nav('/ventas'); }} // 👈 overlay al volver
+          sx={{ mt: 2 }}
+          variant="contained"
+        >
           Volver a Ventas
         </Button>
       </Container>
@@ -97,7 +111,11 @@ export default function VentaDetail() {
 
   return (
     <Container sx={{ mt: 4 }}>
-      <Button onClick={() => nav('/ventas')} variant="outlined" sx={{ mb: 2 }}>
+      <Button
+        onClick={() => { start(); nav('/ventas'); }} // 👈 overlay al volver
+        variant="outlined"
+        sx={{ mb: 2 }}
+      >
         ← Volver a Lista de Ventas
       </Button>
 
@@ -141,47 +159,46 @@ export default function VentaDetail() {
         <TableContainer component={Paper}>
           <Table size="small">
             <TableHead>
-  <TableRow>
-    <TableCell><strong>ID</strong></TableCell>
-    <TableCell><strong>Imagen</strong></TableCell>
-    <TableCell><strong>Producto</strong></TableCell>
-    <TableCell align="right"><strong>Cantidad</strong></TableCell>
-    <TableCell align="right"><strong>Precio Unit.</strong></TableCell>
-    <TableCell align="right"><strong>Descuento</strong></TableCell>
-    <TableCell align="right"><strong>Subtotal</strong></TableCell>
-  </TableRow>
-</TableHead>
-<TableBody>
-  {(venta.lineas || []).map(ln => (
-    <TableRow key={ln.detalle_id}>
-      <TableCell>{ln.detalle_id}</TableCell>
-      <TableCell>
-        {ln.imagen_url && (
-          <img src={ln.imagen_url} alt={ln.producto_nombre} style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4 }} />
-        )}
-      </TableCell>
-      <TableCell>{ln.producto_nombre || `ID ${ln.producto_id}`}</TableCell>
-      <TableCell align="right">{ln.cantidad}</TableCell>
-      <TableCell align="right">
-        $ {Number(ln.precio_unitario).toFixed(2)}
-      </TableCell>
-      <TableCell align="right">
-        $ {Number(ln.descuento || 0).toFixed(2)}
-      </TableCell>
-      <TableCell align="right">
-        $ {Number(ln.subtotal).toFixed(2)}
-      </TableCell>
-    </TableRow>
-  ))}
-  {(!venta.lineas || venta.lineas.length === 0) && (
-    <TableRow>
-      <TableCell colSpan={7} align="center">
-        No hay líneas de detalle.
-      </TableCell>
-    </TableRow>
-  )}
-</TableBody>
-
+              <TableRow>
+                <TableCell><strong>ID</strong></TableCell>
+                <TableCell><strong>Imagen</strong></TableCell>
+                <TableCell><strong>Producto</strong></TableCell>
+                <TableCell align="right"><strong>Cantidad</strong></TableCell>
+                <TableCell align="right"><strong>Precio Unit.</strong></TableCell>
+                <TableCell align="right"><strong>Descuento</strong></TableCell>
+                <TableCell align="right"><strong>Subtotal</strong></TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {(venta.lineas || []).map(ln => (
+                <TableRow key={ln.detalle_id}>
+                  <TableCell>{ln.detalle_id}</TableCell>
+                  <TableCell>
+                    {ln.imagen_url && (
+                      <img
+                        src={ln.imagen_url}
+                        alt={ln.producto_nombre || `ID ${ln.producto_id}`}
+                        style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4 }}
+                      />
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {ln.producto_nombre || productosMap[ln.producto_id] || `ID ${ln.producto_id}`}
+                  </TableCell>
+                  <TableCell align="right">{ln.cantidad}</TableCell>
+                  <TableCell align="right">$ {Number(ln.precio_unitario).toFixed(2)}</TableCell>
+                  <TableCell align="right">$ {Number(ln.descuento || 0).toFixed(2)}</TableCell>
+                  <TableCell align="right">$ {Number(ln.subtotal).toFixed(2)}</TableCell>
+                </TableRow>
+              ))}
+              {(!venta.lineas || venta.lineas.length === 0) && (
+                <TableRow>
+                  <TableCell colSpan={7} align="center">
+                    No hay líneas de detalle.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
           </Table>
         </TableContainer>
       </Paper>

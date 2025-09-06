@@ -10,6 +10,10 @@ const pool = mysql.createPool({
   ssl: process.env.DB_SSL === 'true'
     ? { rejectUnauthorized: true }
     : undefined,
+//evita conversiones implícitas de fecha
+  dateStrings: true, // DATETIME/TIMESTAMP como 'YYYY-MM-DD HH:mm:ss' (no Date)
+  timezone: 'Z',
+  
 });
 
 module.exports = pool;

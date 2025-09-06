@@ -10,11 +10,13 @@ import {
 import DataTable from '../components/DataTable';
 import { fetchClientes, deleteCliente } from '../api/clientes';
 import { useNavigate } from 'react-router-dom';
+import { useLoading } from '../contexts/LoadingContext'; // 👈 overlay global
 
 export default function Clientes() {
   const [clientes, setClientes] = useState([]);
   const [loading, setLoading] = useState(true);
   const nav = useNavigate();
+  const { start, stop } = useLoading(); // 👈
 
   const loadClientes = async () => {
     setLoading(true);
@@ -28,9 +30,44 @@ export default function Clientes() {
     }
   };
 
+  // Carga inicial: apaga el overlay que encendió el Layout al navegar
   useEffect(() => {
-    loadClientes();
+    (async () => {
+      try {
+        await loadClientes();
+      } finally {
+        stop(); // 👈 apaga overlay al terminar
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Navegación con overlay (estos clicks no pasan por Layout)
+  const goToNuevo = () => {
+    start();
+    nav('/clientes/nuevo');
+  };
+
+  const goToEditar = (id) => {
+    start();
+    nav(`/clientes/editar/${id}`);
+  };
+
+  // Eliminar con overlay y recarga
+  const handleDelete = async (row) => {
+    const ok = window.confirm('¿Eliminar este cliente?');
+    if (!ok) return;
+
+    start();
+    try {
+      await deleteCliente(row.id);
+      await loadClientes();
+    } catch (err) {
+      console.error('Error eliminando cliente', err);
+    } finally {
+      stop();
+    }
+  };
 
   const columns = [
     { Header: 'ID', accessor: 'id' },
@@ -49,10 +86,7 @@ export default function Clientes() {
         mb={2}
       >
         <Typography variant="h5">Clientes</Typography>
-        <Button
-          variant="contained"
-          onClick={() => nav('/clientes/nuevo')}
-        >
+        <Button variant="contained" onClick={goToNuevo}>
           Nuevo Cliente
         </Button>
       </Stack>
@@ -62,12 +96,8 @@ export default function Clientes() {
           rows={clientes}
           columns={columns}
           loading={loading}
-          onEdit={row => nav(`/clientes/editar/${row.id}`)}
-          onDelete={row => {
-            if (window.confirm('¿Eliminar este cliente?')) {
-              deleteCliente(row.id).then(loadClientes);
-            }
-          }}
+          onEdit={(row) => goToEditar(row.id)}
+          onDelete={(row) => handleDelete(row)}
         />
       </Paper>
     </Container>

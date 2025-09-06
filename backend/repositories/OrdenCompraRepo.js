@@ -36,7 +36,44 @@ class OrdenCompraRepo {
     );
     return rows[0] || null;
   }
+static async search({ codigo, fecha }) {
+  const conditions = [];
+  const params = [];
 
+  if (codigo) {
+    // Buscar por prefijo: "OC" -> "OC%"
+    conditions.push('oc.codigo LIKE ?');
+    params.push(`${codigo}%`);
+  }
+
+  if (fecha) {
+    // fecha = 'YYYY-MM-DD' del <input type="date">
+    const start = new Date(`${fecha}T00:00:00-06:00`);
+    const end   = new Date(`${fecha}T24:00:00-06:00`);
+    const pad = n => String(n).padStart(2, '0');
+    const fmt = d => `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+    const startUtc = fmt(start); // ej: 2025-09-02 06:00:00
+    const endUtc   = fmt(end);   // ej: 2025-09-03 06:00:00
+
+    conditions.push('(oc.fecha >= ? AND oc.fecha < ?)');
+    params.push(startUtc, endUtc);
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const [rows] = await pool.query(
+    `
+    SELECT oc.id, oc.codigo, oc.proveedor_id, p.nombre AS proveedor_nombre,
+           oc.fecha, oc.estado, oc.total_orden
+    FROM ordenes_compra oc
+    JOIN proveedores p ON oc.proveedor_id = p.id
+    ${where}
+    ORDER BY oc.fecha DESC
+    `,
+    params
+  );
+  return rows;
+}
   // Obtiene todas las líneas de detalle de una orden
   static async fetchDetalle(connOrPool, ordenId) {
     const executor = connOrPool.query ? connOrPool : pool;

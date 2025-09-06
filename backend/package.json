@@ -17,8 +17,10 @@
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
     "helmet": "^8.1.0",
+    "json2csv": "^6.0.0-alpha.2",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.1",
-    "mysql2": "^3.14.1"
+    "mysql2": "^3.14.1",
+    "recharts": "^3.1.2"
   }
 }

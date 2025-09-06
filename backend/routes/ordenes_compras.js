@@ -2,7 +2,7 @@
 const express = require('express');
 const router  = express.Router();
 const ctrl    = require('../controllers/OrdenCompraController');
-
+router.get('/search', ctrl.search);
 router.get('/',    ctrl.listAll);
 router.get('/:id', ctrl.getOne);
 router.post('/',   ctrl.create);

@@ -2,7 +2,7 @@ const pool = require('../config/db');
 
 class VentaRepo {
   // 1) Insertar cabecera de venta, devuelve insertId
-  static async insertCabecera(conn, { codigo, cliente_id, fecha, estado, total_venta }) {
+  static async insertCabecera(conn, { codigo, cliente_id, fecha, estado, total_venta, usuario_id }) {
     const [result] = await conn.query(
       `INSERT INTO ventas (codigo, cliente_id, fecha, estado, total_venta,usuario_id)
        VALUES (?, ?, ?, ?, ?,?)`,
@@ -16,20 +16,28 @@ static async search({ codigo, fecha }) {
   const conditions = [];
   const params = [];
 
-  if (codigo) {
-    conditions.push('v.codigo = ?');
-    params.push(codigo);
-  }
- 
+if (codigo) {
+  conditions.push('v.codigo LIKE ?');
+  params.push(`${codigo}%`); // empieza con "codigo"
+}
+
+
   if (fecha) {
-    conditions.push('DATE(v.fecha) = ?');
-    params.push(fecha);
+    // fecha viene como 'YYYY-MM-DD' desde el <input type="date">
+    const start = new Date(`${fecha}T00:00:00-06:00`);
+    const end   = new Date(`${fecha}T24:00:00-06:00`);
+
+    const pad = n => String(n).padStart(2, '0');
+    const fmt = d => `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+
+    const startUtc = fmt(start); // ej: 2025-09-02 06:00:00
+    const endUtc   = fmt(end);   // ej: 2025-09-03 06:00:00
+
+    conditions.push('(v.fecha >= ? AND v.fecha < ?)');
+    params.push(startUtc, endUtc);
   }
 
-  const where = conditions.length
-    ? 'WHERE ' + conditions.join(' AND ')
-    : '';
-
+  const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
   const sql = `
     SELECT v.id, v.codigo, v.cliente_id, c.nombre AS cliente_nombre,
            v.fecha, v.estado, v.total_venta
@@ -37,8 +45,7 @@ static async search({ codigo, fecha }) {
     JOIN clientes c ON v.cliente_id = c.id
     ${where}
     ORDER BY v.fecha DESC
-  `;
-
+  `
   const [rows] = await pool.query(sql, params);
   return rows;
 }

@@ -1,46 +1,61 @@
 import React, { useEffect, useState } from 'react';
-import {
-  Container, Paper, Typography,
-  Stack, TextField, Button
-} from '@mui/material';
+import { Container, Paper, Typography, Stack, TextField, Button } from '@mui/material';
 import { useNavigate, useParams } from 'react-router-dom';
-import {
-  createProveedor,
-  fetchProveedor,
-  updateProveedor
-} from '../api/proveedores';
+import { createProveedor, fetchProveedor, updateProveedor } from '../api/proveedores';
+import { useLoading } from '../contexts/LoadingContext'; // 👈 overlay global
 
 export default function ProveedorForm() {
   const { id } = useParams();
   const nav = useNavigate();
+  const { start, stop } = useLoading(); // 👈
   const [form, setForm] = useState({ nombre: '', contacto: '' });
 
+  // Al entrar al form: apaga overlay global que dejó la lista
+  useEffect(() => { stop(); }, [stop]);
+
   useEffect(() => {
-    if (id) {
-      fetchProveedor(id).then(r =>
+    if (!id) return;
+    fetchProveedor(id)
+      .then(r => {
+        const data = r?.data ?? r ?? {};
         setForm({
-          nombre: r.data.nombre,
-          contacto: r.data.contacto || ''
-        })
-      );
-    }
+          nombre: data.nombre || '',
+          contacto: data.contacto ? String(data.contacto).replace(/\D/g, '') : ''
+        });
+      })
+      .catch(err => {
+        console.error('Error cargando proveedor', err);
+        alert('No se pudo cargar el proveedor.');
+      });
   }, [id]);
 
   const handleChange = e => {
     const { name, value } = e.target;
     if (name === 'contacto') {
-      // Filtra para dejar solo dígitos
+      // Solo dígitos
       const onlyNums = value.replace(/\D/g, '');
-      setForm({ ...form, contacto: onlyNums });
+      setForm(prev => ({ ...prev, contacto: onlyNums }));
     } else {
-      setForm({ ...form, [name]: value });
+      setForm(prev => ({ ...prev, [name]: value }));
     }
   };
 
   const handleSubmit = async e => {
     e.preventDefault();
-    if (id) await updateProveedor(id, form);
-    else    await createProveedor(form);
+    start(); // overlay durante guardar + navegación
+    try {
+      if (id) await updateProveedor(id, form);
+      else    await createProveedor(form);
+      nav('/proveedores'); // la lista apagará overlay al montar
+    } catch (err) {
+      console.error('Error guardando proveedor', err?.response?.data || err);
+      alert('Hubo un error: ' + (err?.response?.data?.error || err.message));
+      stop(); // si no navega por error, apaga overlay
+    }
+  };
+
+  const handleCancel = () => {
+    start(); // overlay durante la navegación
     nav('/proveedores');
   };
 
@@ -58,17 +73,18 @@ export default function ProveedorForm() {
               value={form.nombre}
               onChange={handleChange}
               required
+              fullWidth
             />
             <TextField
               label="Contacto"
               name="contacto"
               value={form.contacto}
               onChange={handleChange}
-              // Sugiere teclado numérico y patrón de dígitos
               inputProps={{ inputMode: 'numeric', pattern: '[0-9]*' }}
+              fullWidth
             />
             <Stack direction="row" spacing={2} justifyContent="flex-end">
-              <Button variant="outlined" onClick={() => nav('/proveedores')}>
+              <Button variant="outlined" onClick={handleCancel}>
                 Cancelar
               </Button>
               <Button type="submit" variant="contained">
