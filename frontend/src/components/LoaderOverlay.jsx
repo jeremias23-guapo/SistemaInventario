@@ -1,3 +1,5 @@
+//mostrar el overlay de carga
+
 import { useLoading } from "../contexts/LoadingContext";
 
 export default function LoaderOverlay() {

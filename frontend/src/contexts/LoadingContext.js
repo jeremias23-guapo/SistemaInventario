@@ -1,3 +1,4 @@
+// para manejo global de estado de carga (loading)
 import { createContext, useContext, useMemo, useState, useCallback } from "react";
 
 const LoadingContext = createContext({ start: () => {}, stop: () => {}, active: false });

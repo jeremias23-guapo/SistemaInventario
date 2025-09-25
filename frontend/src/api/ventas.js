@@ -24,25 +24,36 @@ API.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err?.response?.status === 401) {
-      // por ejemplo, limpiar sesión y mandar al login
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      // window.location.href = '/login'; // descomenta si quieres redirigir aquí
+      // window.location.href = '/login';
     }
     return Promise.reject(err);
   }
 );
 
-export const fetchVentas = () => API.get('/').then(res => res.data);
+// --- NUEVO: helpers para construir query de paginación
+const withPageParams = (url, { page, limit } = {}) => {
+  const params = new URLSearchParams();
+  if (page)  params.append('page', page);
+  if (limit) params.append('limit', limit);
+  const qs = params.toString();
+  return qs ? `${url}?${qs}` : url;
+};
+
+export const fetchVentas = ({ page = 1, limit = 10 } = {}) =>
+  API.get(withPageParams('/', { page, limit })).then(res => res.data);
+
 export const fetchVenta = (id) => API.get(`/${id}`).then(res => res.data);
 export const createVenta = (data) => API.post('/', data).then(res => res.data);
-// NOTA: no envíes usuario_id desde el front; el backend lo toma del token.
 export const updateVenta = (id, data) => API.put(`/${id}`, data).then(res => res.data);
 export const deleteVenta = (id) => API.delete(`/${id}`);
 
-export const searchVentas = ({ codigo, proveedor_id, fecha }) => {
+export const searchVentas = ({ codigo, fecha, page = 1, limit = 10 }) => {
   const params = new URLSearchParams();
   if (codigo) params.append('codigo', codigo);
   if (fecha) params.append('fecha', fecha);
+  if (page)  params.append('page', page);
+  if (limit) params.append('limit', limit);
   return API.get(`/search?${params.toString()}`).then(res => res.data);
 };

@@ -3,10 +3,9 @@ const ProductoRepo = require('../repositories/ProductoRepo');
 
 class ProductoService {
   // Listar productos con filtros
-  async listarProductos(filters = {}) {
-    return ProductoRepo.findAll(filters);
-  }
-
+  async listarProductos(filters = {}, options = {}) {
+  return ProductoRepo.findAll(filters, options);
+}
   // Obtener producto por ID
   async obtenerProducto(id) {
     const prod = await ProductoRepo.findById(id);
@@ -65,7 +64,10 @@ class ProductoService {
       conn.release();
     }
   }
-
+ // NUEVO: búsqueda liviana paginada
+  async buscarProductosLight(filters = {}, options = {}) {
+    return ProductoRepo.searchLight(filters, options);
+  }
   // Ajustar stock
   async ajustarStock(id, delta) {
     const prod = await this.obtenerProducto(id);

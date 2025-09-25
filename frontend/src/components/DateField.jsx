@@ -1,3 +1,5 @@
+//para formatear fechas
+
 import React from 'react';
 import { formatDateSV } from '../utils/date';
 

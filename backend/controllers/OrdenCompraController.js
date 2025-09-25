@@ -3,8 +3,10 @@ const OrdenCompraService = require('../services/OrdenCompraService');
 
 exports.listAll = async (req, res, next) => {
   try {
-    const ordenes = await OrdenCompraService.listAll();
-    res.json(ordenes);
+    const page = Number(req.query.page) || 1;
+    const pageSize = Number(req.query.pageSize) || 10;
+    const result = await OrdenCompraService.listPaginated({ page, pageSize });
+    res.json(result);
   } catch (err) { next(err); }
 };
 
@@ -20,7 +22,9 @@ exports.getOne = async (req, res, next) => {
 exports.search = async (req, res, next) => {
   try {
     const { codigo, fecha } = req.query;
-    const resultados = await OrdenCompraService.search({ codigo, fecha });
+    const page = Number(req.query.page) || 1;
+    const pageSize = Number(req.query.pageSize) || 10;
+    const resultados = await OrdenCompraService.searchPaginated({ codigo, fecha }, { page, pageSize });
     res.json(resultados);
   } catch (err) { next(err); }
 };

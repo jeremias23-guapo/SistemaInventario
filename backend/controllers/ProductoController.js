@@ -4,27 +4,24 @@ const productoService = require('../services/ProductoService');
 
 exports.getProductos = async (req, res) => {
   try {
-    // Ahora extraemos subcategoriaId además de search y categoriaId
     const {
-      search = '',
-      categoriaId = '',
-      subcategoriaId = ''
+      search = '', categoriaId = '', subcategoriaId = '',
+      page = '1', pageSize = '10'
     } = req.query;
 
-    const filters = {
-      search,
-      categoriaId,
-      subcategoriaId
+    const filters = { search, categoriaId, subcategoriaId };
+    const options = {
+      page: Math.max(1, parseInt(page, 10) || 1),
+      pageSize: Math.min(100, Math.max(1, parseInt(pageSize, 10) || 10)),
     };
 
-    const lista = await productoService.listarProductos(filters);
-    res.json(lista);
+    const result = await productoService.listarProductos(filters, options);
+    res.json(result);
   } catch (err) {
     console.error('Error cargando productos:', err);
     res.status(500).json({ error: err.message });
   }
 };
-
 
 exports.getProducto = async (req, res) => {
   try {
@@ -54,7 +51,24 @@ exports.updateProducto = async (req, res) => {
        .json({ error: err.message });
   }
 };
+// NUEVO: endpoint liviano para autocompletar
+exports.searchProductosLight = async (req, res) => {
+  try {
+    const {
+      q = '', page = '1', pageSize = '20' // nombres cortos típicos de autocompletar
+    } = req.query;
 
+    const result = await productoService.buscarProductosLight(
+      { search: q },
+      { page: Math.max(1, parseInt(page, 10) || 1), pageSize: Math.min(100, Math.max(1, parseInt(pageSize, 10) || 20)) }
+    );
+
+    // Respuesta mínima ideal para FE: items + hasMore
+    res.json({ items: result.items, hasMore: result.hasMore, page: result.page, pageSize: result.pageSize, total: result.total });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
 exports.deleteProducto = async (req, res) => {
   try {
     await productoService.eliminarProducto(req.params.id);

@@ -1,206 +1,138 @@
 // frontend/src/pages/VentaForm.jsx
 import React, { useEffect, useState } from 'react';
 import {
-  Container,
-  TextField,
-  Button,
-  Stack,
-  Typography,
-  Paper,
-  MenuItem,
-  IconButton,
-  Grid
+  Container, TextField, Button, Stack, Typography, Paper, MenuItem, IconButton, Grid
 } from '@mui/material';
 import { AddCircle, RemoveCircle } from '@mui/icons-material';
 import { fetchVenta, createVenta, updateVenta } from '../api/ventas';
-import { fetchProductos } from '../api/productos';
-import { fetchClientes } from '../api/clientes'; // Asegúrate de que fetchClientes devuelva un array
+import { fetchClientes } from '../api/clientes';
+import { fetchTransportistas } from '../api/transportistas';
+import { searchProductosLight } from '../api/productos';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useLoading } from '../contexts/LoadingContext'; // 👈 overlay global
+import { useLoading } from '../contexts/LoadingContext';
+import AsyncAutocomplete from '../components/AsyncAutocomplete';
+
+const METODOS = [
+  { value: 'transferencia', label: 'transferencia' },
+  { value: 'contra_entrega', label: 'contra_entrega' },
+];
+const ESTADOS_ENVIO = [
+  { value: 'pendiente_envio', label: 'pendiente_envio' },
+  { value: 'enviado', label: 'enviado' },
+  { value: 'recibido', label: 'recibido' },
+];
+const ESTADOS_PAGO = [
+  { value: 'pendiente_pago', label: 'pendiente_pago' },
+  { value: 'pagada', label: 'pagada' },
+];
+const ESTADOS_VENTA = [
+  { value: 'activa', label: 'activa' },
+  { value: 'cancelada', label: 'cancelada' },
+  { value: 'finalizada', label: 'finalizada' },
+];
+
+const fmtMoney = (n) => (Number.isFinite(+n) ? Number(n).toFixed(2) : '0.00');
 
 export default function VentaForm() {
   const { id } = useParams();
+  const isEdit = Boolean(id);
   const nav = useNavigate();
-  const { start, stop } = useLoading(); // 👈
+  const { start, stop } = useLoading();
 
-  // ------------------------
-  // 1) Estado de la cabecera
-  // ------------------------
   const [cabecera, setCabecera] = useState({
     codigo: '',
     cliente_id: '',
-    estado: 'pendiente'
+    transportista_id: '',
+    metodo_pago: 'transferencia',
+    estado_envio: 'pendiente_envio',
+    estado_pago: 'pendiente_pago',
+    estado_venta: 'activa',
   });
 
-  // ----------------------------
-  // 2) Estado para las líneas
-  // ----------------------------
   const [lineas, setLineas] = useState([]);
-
-  // ----------------------------
-  // 3) Catálogos (productos + clientes)
-  // ----------------------------
-  const [productos, setProductos] = useState([]);
   const [clientes, setClientes] = useState([]);
+  const [transportistas, setTransportistas] = useState([]);
 
-  // Al entrar al form: apaga el overlay global (la lista lo dejó encendido)
   useEffect(() => { stop(); }, [stop]);
 
-  // ---------------------------------------------------
-  // 4) useEffect: cargar catálogos y, si editando, datos
-  // ---------------------------------------------------
   useEffect(() => {
-    // 4.a) Cargar productos
-    fetchProductos()
-      .then(r => {
-        const arr = Array.isArray(r?.data) ? r.data : (Array.isArray(r) ? r : []);
-        setProductos(arr || []);
-      })
-      .catch(err => {
-        console.error('Error cargando productos:', err);
-        setProductos([]);
-      });
+    fetchClientes().then(r => {
+      const arr = Array.isArray(r?.data) ? r.data : (Array.isArray(r) ? r : []);
+      setClientes(arr || []);
+    }).catch(()=>setClientes([]));
 
-    // 4.b) Cargar clientes
-    fetchClientes()
-      .then(r => {
-        const arr = Array.isArray(r?.data) ? r.data : (Array.isArray(r) ? r : []);
-        setClientes(arr || []);
-      })
-      .catch(err => {
-        console.error('Error cargando clientes:', err);
-        setClientes([]);
-      });
+    fetchTransportistas()
+      .then(setTransportistas)
+      .catch(()=>setTransportistas([]));
 
-    // 4.c) Si hay id → editar, cargar la venta completa
     if (id) {
-      fetchVenta(id)
-        .then(r => {
-          const v = r?.data ?? r ?? {};
-          const fetchedLineas = Array.isArray(v.lineas) ? v.lineas : [];
-
-          setCabecera({
-            codigo: v.codigo || '',
-            cliente_id: v.cliente_id?.toString() || '',
-            estado: v.estado || 'pendiente'
-          });
-
-          // Mapear líneas al formato local
-          setLineas(
-            fetchedLineas.map(ln => ({
-              producto_id: (ln.producto_id ?? '').toString(),
-              cantidad: (ln.cantidad ?? '').toString(),
-              precio_unitario: (ln.precio_unitario ?? '').toString(),
-              descuento: (ln.descuento || 0).toString()
-            }))
-          );
-        })
-        .catch(err => {
-          console.error('Error al cargar la venta:', err);
-          setLineas([]);
+      fetchVenta(id).then(r => {
+        const v = r?.data ?? r ?? {};
+        const fetchedLineas = Array.isArray(v.lineas) ? v.lineas : [];
+        setCabecera({
+          codigo: v.codigo || '',
+          cliente_id: v.cliente_id?.toString() || '',
+          transportista_id: v.transportista_id?.toString() || '',
+          metodo_pago: v.metodo_pago || 'transferencia',
+          estado_envio: v.estado_envio || 'pendiente_envio',
+          estado_pago:  v.estado_pago  || 'pendiente_pago',
+          estado_venta: v.estado_venta || 'activa',
         });
+        setLineas(
+          fetchedLineas.map(ln => ({
+            _producto: ln.producto_id && ln.producto_nombre
+              ? { id: ln.producto_id, label: ln.producto_nombre, precio_venta: ln.precio_unitario }
+              : null,
+            producto_id: (ln.producto_id ?? '').toString(),
+            cantidad: (ln.cantidad ?? '').toString(),
+            precio_unitario: (ln.precio_unitario ?? '').toString(),
+            descuento: (ln.descuento || 0).toString()
+          }))
+        );
+      }).catch(()=>setLineas([]));
     }
   }, [id]);
 
-  // ---------------------------------------
-  // 5) Manejo de cambio en la cabecera
-  // ---------------------------------------
   const handleCabeceraChange = e => {
     const { name, value } = e.target;
     setCabecera(c => ({ ...c, [name]: value }));
   };
 
-  // ---------------------------------------
-  // 6) Manejo de cambio en una línea
-  // ---------------------------------------
   const handleLineaChange = (idx, e) => {
     const { name, value } = e.target;
-    setLineas(lines =>
-      lines.map((ln, i) => (i === idx ? { ...ln, [name]: value } : ln))
-    );
+    setLineas(lines => lines.map((ln, i) => (i === idx ? { ...ln, [name]: value } : ln)));
   };
 
-  // -------------------------------------------------------------------
-  // 7) Cuando selecciono un producto: autollenar el precio unitario
-  // -------------------------------------------------------------------
-  const handleProductoSelect = (idx, productoId) => {
-    const prod = productos.find(p => p.id.toString() === productoId);
-    const precioStr = prod ? String(prod.precio_venta ?? '') : '';
-    setLineas(lines =>
-      lines.map((ln, i) =>
-        i === idx
-          ? { ...ln, producto_id: productoId, precio_unitario: precioStr }
-          : ln
-      )
-    );
-  };
+  const addLinea = () =>
+    setLineas(l => [...l, { _producto: null, producto_id: '', cantidad: '', precio_unitario: '', descuento: '' }]);
 
-  // ------------------------
-  // 8) Agregar línea vacía
-  // ------------------------
-  const addLinea = () => {
-    setLineas(l => [
-      ...l,
-      { producto_id: '', cantidad: '', precio_unitario: '', descuento: '' }
-    ]);
-  };
+  const removeLinea = idx => setLineas(l => l.filter((_, i) => i !== idx));
 
-  // ----------------------
-  // 9) Eliminar una línea
-  // ----------------------
-  const removeLinea = idx => {
-    setLineas(l => l.filter((_, i) => i !== idx));
-  };
-
-  // ------------------------------------------------
-  // 10) Calcular subtotal de una línea (sin impuesto)
-  // ------------------------------------------------
   const calcularSubtotal = ln => {
-    const c    = Number(ln.cantidad) || 0;
-    const pu   = Number(ln.precio_unitario) || 0;
-    const desc = Number(ln.descuento) || 0;
-    return c * pu - desc;
+    const c = Number(ln.cantidad) || 0;
+    const pu = Number(ln.precio_unitario) || 0;
+    const d = Number(ln.descuento) || 0;
+    return c * pu - d;
   };
+  const totalVenta = (lineas || []).reduce((sum, ln) => sum + calcularSubtotal(ln), 0);
 
-  // ---------------------------------------
-  // 11) Calcular total de la venta
-  // ---------------------------------------
-  const totalVenta = (lineas || []).reduce(
-    (sum, ln) => sum + calcularSubtotal(ln),
-    0
-  );
-
-  // ------------------------------------------------
-  // 12) Enviar formulario: crear o actualizar venta
-  // ------------------------------------------------
   const handleSubmit = async e => {
     e.preventDefault();
+    if (!Array.isArray(lineas) || lineas.length === 0) return alert('Debe agregar al menos una línea');
 
-    // Validar que haya al menos una línea
-    if (!Array.isArray(lineas) || lineas.length === 0) {
-      alert('Debe agregar al menos una línea');
-      return;
-    }
-
-    // Validar cada línea (producto, cantidad > 0, precio > 0)
     for (const ln of lineas) {
-      if (
-        !ln.producto_id ||
-        Number(ln.cantidad) <= 0 ||
-        Number(ln.precio_unitario) <= 0
-      ) {
-        alert(
-          'Cada línea requiere un producto, cantidad mayor a 0 y precio unitario mayor a 0'
-        );
-        return;
+      if (!ln.producto_id || Number(ln.cantidad) <= 0 || Number(ln.precio_unitario) <= 0) {
+        return alert('Cada línea requiere producto, cantidad>0 y precio>0');
       }
     }
 
-    // Construir payload sin campo impuesto (tu tabla no tiene impuesto)
-    const payload = {
-      codigo: cabecera.codigo,
+    const payloadBase = {
       cliente_id: Number(cabecera.cliente_id),
-      estado: cabecera.estado,
+      transportista_id: cabecera.transportista_id ? Number(cabecera.transportista_id) : null,
+      metodo_pago: cabecera.metodo_pago,
+      estado_envio: cabecera.estado_envio,
+      estado_pago:  cabecera.estado_pago,
+      estado_venta: cabecera.estado_venta,
       lineas: lineas.map(ln => ({
         producto_id: Number(ln.producto_id),
         cantidad: Number(ln.cantidad),
@@ -209,209 +141,145 @@ export default function VentaForm() {
       }))
     };
 
-    start(); // 👈 overlay durante guardar + navegación
+    const payload = isEdit ? { ...payloadBase, codigo: cabecera.codigo } : payloadBase;
+
     try {
-      if (id) {
-        await updateVenta(id, payload);
-      } else {
-        await createVenta(payload);
-      }
-      nav('/ventas'); // la lista apagará el overlay al montar
+      if (isEdit) await updateVenta(id, payload);
+      else await createVenta(payload);
+      nav('/ventas');
     } catch (err) {
       console.error('Error guardando venta', err?.response?.data || err);
       alert('Hubo un error: ' + (err?.response?.data?.error || err.message));
-      stop(); // 👈 si no navega por error, apaga overlay
+      stop();
     }
   };
 
-  const handleCancel = () => {
-    start(); // 👈 overlay durante la navegación
-    nav('/ventas');
+  const handleCancel = () => { start(); nav('/ventas'); };
+
+  // Adapter fetch para el autocomplete
+  const fetchProductosPage = async ({ q, page, limit }) => {
+    const res = await searchProductosLight({ q, page, pageSize: limit });
+    return { items: res?.items || [], hasMore: !!res?.hasMore };
   };
 
   return (
     <Container maxWidth="md" sx={{ mt: 4 }}>
       <Paper sx={{ p: 3 }}>
-        <Typography variant="h5" mb={2}>
-          {id ? 'Editar Venta' : 'Nueva Venta'}
-        </Typography>
+        <Typography variant="h5" mb={2}>{isEdit ? 'Editar Venta' : 'Nueva Venta'}</Typography>
 
         <form onSubmit={handleSubmit}>
           <Stack spacing={2}>
-            {/* ======= CABECERA ======= */}
             <Grid container spacing={2}>
-              {/* Código */}
-              <Grid item xs={12} md={4}>
-                <TextField
-                  label="Código"
-                  name="codigo"
-                  value={cabecera.codigo}
-                  onChange={handleCabeceraChange}
-                  required
-                  fullWidth
-                />
-              </Grid>
+              {isEdit && (
+                <Grid item xs={12} md={4}>
+                  <TextField label="Código" name="codigo" value={cabecera.codigo} fullWidth InputProps={{ readOnly: true }} />
+                </Grid>
+              )}
 
-              {/* Cliente */}
-              <Grid item xs={12} md={4}>
-                <TextField
-                  select
-                  label="Cliente"
-                  name="cliente_id"
-                  value={cabecera.cliente_id}
-                  onChange={handleCabeceraChange}
-                  required
-                  fullWidth
-                >
-                  {/* Mapear sobre (clientes || []) para evitar undefined */}
-                  {(clientes || []).map(c => (
-                    <MenuItem key={c.id} value={c.id.toString()}>
-                      {c.nombre}
-                    </MenuItem>
-                  ))}
+              <Grid item xs={12} md={isEdit ? 4 : 6}>
+                <TextField select label="Cliente" name="cliente_id" value={cabecera.cliente_id} onChange={handleCabeceraChange} required fullWidth>
+                  {(clientes || []).map(c => <MenuItem key={c.id} value={c.id.toString()}>{c.nombre}</MenuItem>)}
                 </TextField>
               </Grid>
 
-              {/* Estado */}
+              <Grid item xs={12} md={isEdit ? 4 : 6}>
+                <TextField select label="Método de pago" name="metodo_pago" value={cabecera.metodo_pago} onChange={handleCabeceraChange} fullWidth>
+                  {METODOS.map(o => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
+                </TextField>
+              </Grid>
+
+              <Grid item xs={12} md={isEdit ? 4 : 6}>
+                <TextField select label="Transportista" name="transportista_id" value={cabecera.transportista_id} onChange={handleCabeceraChange} fullWidth>
+                  <MenuItem value="">(sin transportista)</MenuItem>
+                  {(transportistas || []).map(t => <MenuItem key={t.id} value={t.id.toString()}>{t.nombre}</MenuItem>)}
+                </TextField>
+              </Grid>
+
               <Grid item xs={12} md={4}>
-                <TextField
-                  select
-                  label="Estado"
-                  name="estado"
-                  value={cabecera.estado}
-                  onChange={handleCabeceraChange}
-                  fullWidth
-                >
-                  <MenuItem value="pendiente">pendiente</MenuItem>
-                  <MenuItem value="pagada">pagada</MenuItem>
-                  <MenuItem value="cancelada">cancelada</MenuItem>
+                <TextField select label="Estado pago" name="estado_pago" value={cabecera.estado_pago} onChange={handleCabeceraChange} fullWidth>
+                  {ESTADOS_PAGO.map(o => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
+                </TextField>
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                <TextField select label="Estado envío" name="estado_envio" value={cabecera.estado_envio} onChange={handleCabeceraChange} fullWidth>
+                  {ESTADOS_ENVIO.map(o => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
+                </TextField>
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                <TextField select label="Estado venta" name="estado_venta" value={cabecera.estado_venta} onChange={handleCabeceraChange} fullWidth>
+                  {ESTADOS_VENTA.map(o => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
                 </TextField>
               </Grid>
             </Grid>
 
-            {/* ======= LÍNEAS DE VENTA ======= */}
-            <Typography variant="h6" mt={2}>
-              Líneas de Venta
-            </Typography>
+            <Typography variant="h6" mt={2}>Líneas de Venta</Typography>
             {(lineas || []).map((ln, idx) => (
-              <Paper
-                key={idx}
-                sx={{ p: 2, mb: 1, position: 'relative' }}
-              >
-                {/* Botón para eliminar esta línea */}
-                <IconButton
-                  size="small"
-                  onClick={() => removeLinea(idx)}
-                  sx={{ position: 'absolute', top: 4, right: 4 }}
-                >
+              <Paper key={idx} sx={{ p: 2, mb: 1, position: 'relative' }}>
+                <IconButton size="small" onClick={() => removeLinea(idx)} sx={{ position: 'absolute', top: 4, right: 4 }}>
                   <RemoveCircle color="error" />
                 </IconButton>
 
-                <Grid container spacing={2}>
-                  {/* Producto */}
+                <Grid container spacing={2} alignItems="center">
                   <Grid item xs={12} md={4}>
-                    <TextField
-                      select
+                    <AsyncAutocomplete
                       label="Producto"
-                      name="producto_id"
-                      value={ln.producto_id}
-                      onChange={e =>
-                        handleProductoSelect(idx, e.target.value)
-                      }
-                      required
-                      fullWidth
-                    >
-                      {(productos || []).map(p => (
-                        <MenuItem
-                          key={p.id}
-                          value={p.id.toString()}
-                        >
-                          {p.nombre}
-                        </MenuItem>
-                      ))}
-                    </TextField>
-                  </Grid>
-
-                  {/* Cantidad */}
-                  <Grid item xs={6} md={2}>
-                    <TextField
-                      label="Cantidad"
-                      name="cantidad"
-                      type="number"
-                      value={ln.cantidad}
-                      onChange={e => handleLineaChange(idx, e)}
-                      required
-                      fullWidth
+                      value={ln._producto || null}
+                      onChange={(val) => {
+                        const precioStr = val?.precio_venta != null ? String(val.precio_venta) : '';
+                        setLineas((lines) =>
+                          lines.map((row, i) =>
+                            i === idx
+                              ? { ...row, _producto: val || null, producto_id: val?.id?.toString() || '', precio_unitario: precioStr }
+                              : row
+                          )
+                        );
+                      }}
+                      fetchPage={fetchProductosPage}
+                      popupMinWidth={420}
+                      getOptionLabel={(opt) => opt?.label ?? ''}
+                      renderOption={(props, opt) => (
+                        <li {...props} key={opt.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {opt.label}
+                          </span>
+                          {opt.precio_venta != null && (
+                            <span style={{ opacity: 0.8, fontVariantNumeric: 'tabular-nums' }}>
+                              ${fmtMoney(opt.precio_venta)}
+                            </span>
+                          )}
+                        </li>
+                      )}
                     />
                   </Grid>
 
-                  {/* Precio Unitario (auto‐llenado según producto) */}
                   <Grid item xs={6} md={2}>
-                    <TextField
-                      label="Precio Unit."
-                      name="precio_unitario"
-                      type="number"
-                      inputProps={{ step: '0.01' }}
-                      value={ln.precio_unitario}
-                      onChange={e => handleLineaChange(idx, e)}
-                      required
-                      fullWidth
-                    />
+                    <TextField label="Cantidad" name="cantidad" type="number" value={ln.cantidad} onChange={e => handleLineaChange(idx, e)} required fullWidth />
                   </Grid>
 
-                  {/* Descuento */}
                   <Grid item xs={6} md={2}>
-                    <TextField
-                      label="Descuento"
-                      name="descuento"
-                      type="number"
-                      inputProps={{ step: '0.01' }}
-                      value={ln.descuento}
-                      onChange={e => handleLineaChange(idx, e)}
-                      fullWidth
-                    />
+                    <TextField label="Precio Unit." name="precio_unitario" type="number" inputProps={{ step: '0.01' }} value={ln.precio_unitario} onChange={e => handleLineaChange(idx, e)} required fullWidth />
                   </Grid>
 
-                  {/* Subtotal */}
                   <Grid item xs={6} md={2}>
-                    <TextField
-                      label="Subtotal"
-                      name="subtotal"
-                      type="number"
-                      value={calcularSubtotal(ln).toFixed(2)}
-                      InputProps={{ readOnly: true }}
-                      fullWidth
-                    />
+                    <TextField label="Descuento" name="descuento" type="number" inputProps={{ step: '0.01' }} value={ln.descuento} onChange={e => handleLineaChange(idx, e)} fullWidth />
+                  </Grid>
+
+                  <Grid item xs={6} md={2}>
+                    <TextField label="Subtotal" name="subtotal" type="number" value={fmtMoney(calcularSubtotal(ln))} InputProps={{ readOnly: true }} fullWidth />
                   </Grid>
                 </Grid>
               </Paper>
             ))}
 
-            {/* Botón “Agregar Línea” */}
-            <Button
-              variant="outlined"
-              startIcon={<AddCircle />}
-              onClick={addLinea}
-            >
-              Agregar Línea
-            </Button>
+            <Button variant="outlined" startIcon={<AddCircle />} onClick={addLinea}>Agregar Línea</Button>
 
-            {/* ======= TOTAL DE LA VENTA ======= */}
-            <Typography variant="h6" align="right" mt={2}>
-              Total de la Venta: $ {totalVenta.toFixed(2)}
-            </Typography>
+            <Typography variant="h6" align="right" mt={2}>Total de la Venta: $ {fmtMoney(totalVenta)}</Typography>
 
-            {/* ======= BOTONES DE ACCIÓN ======= */}
             <Stack direction="row" spacing={2} justifyContent="flex-end">
-              <Button
-                variant="outlined"
-                onClick={handleCancel} // 👈 overlay + navegación
-              >
-                Cancelar
-              </Button>
-              <Button type="submit" variant="contained">
-                {id ? 'Actualizar Venta' : 'Guardar Venta'}
-              </Button>
+              <Button variant="outlined" onClick={handleCancel}>Cancelar</Button>
+              <Button type="submit" variant="contained">{isEdit ? 'Actualizar Venta' : 'Guardar Venta'}</Button>
             </Stack>
           </Stack>
         </form>

@@ -5,12 +5,13 @@ import Layout from './components/Layout';
 import Login from './pages/Login';
 import { AuthContext } from './contexts/AuthContext';
 
-// >>> imports para loader global
+// Providers y overlay
 import { LoadingProvider } from './contexts/LoadingContext';
 import LoaderOverlay from './components/LoaderOverlay';
-// <<<
+import { ConfirmProvider } from './contexts/ConfirmContext';
+import { ToastProvider } from './contexts/ToastContext';
 
-// Páginas existentes
+// Páginas...
 import Productos from './pages/Productos';
 import ProductoForm from './pages/ProductoForm';
 import Clientes from './pages/Clientes';
@@ -25,17 +26,14 @@ import Ventas from './pages/Ventas';
 import VentaForm from './pages/VentaForm';
 import VentaDetalle from './pages/VentaDetalle';
 import Transacciones from './pages/Transacciones';
-import OrdenesCompra from './pages/OrdenesCompras';
+import OrdenesCompra from './pages/OrdenesCompras'; // verifica nombre/archivo
 import OrdenCompraForm from './pages/OrdenCompraForm';
 import OrdenCompraDetalle from './pages/OrdenCompraDetalle';
 import Usuarios from './pages/Usuarios';
 import UsuarioForm from './pages/UsuarioForm';
-
-// NUEVAS páginas
-
+import Transportistas from './pages/Transportistas';
 import Reportes from './pages/Reportes';
 
-// Wrapper de rutas privadas
 function PrivateRoute({ children }) {
   const { token } = useContext(AuthContext);
   return token ? children : <Navigate to="/login" replace />;
@@ -44,74 +42,64 @@ function PrivateRoute({ children }) {
 export default function App() {
   return (
     <LoadingProvider>
-      <Routes>
-        {/* Ruta pública */}
-        <Route path="/login" element={<Login />} />
+      <ToastProvider>
+        <ConfirmProvider>
+          <Routes>
+            {/* Pública */}
+            <Route path="/login" element={<Login />} />
 
-        {/* Rutas protegidas */}
-        <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
-          {/* Redirige / a /productos (puedes cambiar a "dashboard" si quieres) */}
-          <Route index element={<Navigate to="productos" replace />} />
+            {/* Protegidas */}
+            <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
+              <Route index element={<Navigate to="productos" replace />} />
+              <Route path="transportistas" element={<Transportistas />} />
+              <Route path="reportes" element={<Reportes />} />
 
+              <Route path="productos" element={<Productos />} />
+              <Route path="productos/nuevo" element={<ProductoForm />} />
+              <Route path="productos/editar/:id" element={<ProductoForm />} />
 
-          {/* Reportes (visible para todos los usuarios autenticados) */}
-          <Route path="reportes" element={<Reportes />} />
+              <Route path="clientes" element={<Clientes />} />
+              <Route path="clientes/nuevo" element={<ClienteForm />} />
+              <Route path="clientes/editar/:id" element={<ClienteForm />} />
 
-          {/* Productos */}
-          <Route path="productos" element={<Productos />} />
-          <Route path="productos/nuevo" element={<ProductoForm />} />
-          <Route path="productos/editar/:id" element={<ProductoForm />} />
+              <Route path="categorias" element={<Categorias />} />
+              <Route path="categorias/nuevo" element={<CategoriaForm />} />
+              <Route path="categorias/editar/:id" element={<CategoriaForm />} />
 
-          {/* Clientes */}
-          <Route path="clientes" element={<Clientes />} />
-          <Route path="clientes/nuevo" element={<ClienteForm />} />
-          <Route path="clientes/editar/:id" element={<ClienteForm />} />
+              <Route path="marcas" element={<Marcas />} />
+              <Route path="marcas/nuevo" element={<MarcasForm />} />
+              <Route path="marcas/editar/:id" element={<MarcasForm />} />
 
-          {/* Categorías */}
-          <Route path="categorias" element={<Categorias />} />
-          <Route path="categorias/nuevo" element={<CategoriaForm />} />
-          <Route path="categorias/editar/:id" element={<CategoriaForm />} />
+              <Route path="proveedores" element={<Proveedores />} />
+              <Route path="proveedores/nuevo" element={<ProveedoresForm />} />
+              <Route path="proveedores/editar/:id" element={<ProveedoresForm />} />
 
-          {/* Marcas */}
-          <Route path="marcas" element={<Marcas />} />
-          <Route path="marcas/nuevo" element={<MarcasForm />} />
-          <Route path="marcas/editar/:id" element={<MarcasForm />} />
+              <Route path="ventas" element={<Ventas />} />
+              <Route path="ventas/nuevo" element={<VentaForm />} />
+              <Route path="ventas/editar/:id" element={<VentaForm />} />
+              <Route path="ventas/ver/:id" element={<VentaDetalle />} />
 
-          {/* Proveedores */}
-          <Route path="proveedores" element={<Proveedores />} />
-          <Route path="proveedores/nuevo" element={<ProveedoresForm />} />
-          <Route path="proveedores/editar/:id" element={<ProveedoresForm />} />
+              <Route path="ordenes_compra" element={<OrdenesCompra />} />
+              <Route path="ordenes_compra/nuevo" element={<OrdenCompraForm />} />
+              <Route path="ordenes_compra/editar/:id" element={<OrdenCompraForm />} />
+              <Route path="ordenes_compra/detalle/:id" element={<OrdenCompraDetalle />} />
 
-          {/* Ventas */}
-          <Route path="ventas" element={<Ventas />} />
-          <Route path="ventas/nuevo" element={<VentaForm />} />
-          <Route path="ventas/editar/:id" element={<VentaForm />} />
-          <Route path="ventas/ver/:id" element={<VentaDetalle />} />
+              <Route path="transacciones" element={<Transacciones />} />
 
-          {/* Órdenes de compra */}
-          <Route path="ordenes_compra" element={<OrdenesCompra />} />
-          <Route path="ordenes_compra/nuevo" element={<OrdenCompraForm />} />
-          <Route path="ordenes_compra/editar/:id" element={<OrdenCompraForm />} />
-          <Route path="ordenes_compra/detalle/:id" element={<OrdenCompraDetalle />} />
+              <Route path="usuarios" element={<Usuarios />} />
+              <Route path="usuarios/nuevo" element={<UsuarioForm />} />
+              <Route path="usuarios/editar/:id" element={<UsuarioForm />} />
 
-          {/* Transacciones */}
-          <Route path="transacciones" element={<Transacciones />} />
+              <Route path="*" element={<Navigate to="productos" replace />} />
+            </Route>
 
-          {/* Usuarios (si tu Layout ya oculta/permite por rol, aquí puede quedar abierto) */}
-          <Route path="usuarios" element={<Usuarios />} />
-          <Route path="usuarios/nuevo" element={<UsuarioForm />} />
-          <Route path="usuarios/editar/:id" element={<UsuarioForm />} />
+            <Route path="*" element={<Navigate to="/login" replace />} />
+          </Routes>
 
-          {/* Cualquier ruta desconocida redirige a /productos */}
-          <Route path="*" element={<Navigate to="productos" replace />} />
-        </Route>
-
-        {/* Si ninguna coincide, redirige a login */}
-        <Route path="*" element={<Navigate to="/login" replace />} />
-      </Routes>
-
-      {/* Overlay global de carga */}
-      <LoaderOverlay />
+          {/* Overlay global (depende de LoadingProvider, ya está arriba) */}
+          <LoaderOverlay />
+        </ConfirmProvider>
+      </ToastProvider>
     </LoadingProvider>
   );
 }

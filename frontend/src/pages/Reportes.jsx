@@ -1,8 +1,6 @@
 // frontend/src/pages/Reportes.jsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Container, Paper, Stack, TextField, Button, Tabs, Tab, Grid, Typography
-} from '@mui/material';
+import { Container, Paper, Stack, TextField, Button, Tabs, Tab, Grid, Typography, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
 import DataTable from '../components/DataTable';
 import { useLoading } from '../contexts/LoadingContext';
 import {
@@ -12,10 +10,9 @@ import {
   fetchInventory, fetchLowStock, fetchMovements,
   downloadCsvGeneric
 } from '../api/reports';
-import {
-  ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip,
-  BarChart, Bar, CartesianGrid, PieChart, Pie, Legend
-} from 'recharts';
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, BarChart, Bar, CartesianGrid, PieChart, Pie, Legend } from 'recharts';
+
+const currency = (n) => (n==null ? '—' : new Intl.NumberFormat('es-SV',{style:'currency',currency:'USD',maximumFractionDigits:2}).format(Number(n)));
 
 function KpiCard({ title, value }) {
   return (
@@ -26,17 +23,16 @@ function KpiCard({ title, value }) {
   );
 }
 
-const currency = (n) => (n==null ? '—' :
-  new Intl.NumberFormat('es-SV', { style:'currency', currency:'USD', maximumFractionDigits:2 }).format(Number(n)));
-
 export default function Reportes() {
   const { start, stop } = useLoading();
 
-  // filtros (solo fechas)
+  // filtros
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [estado, setEstado] = useState('pagada'); // pagada | pendiente | cancelada | todas
+  const TZ = '-06:00';
 
-  // tabla ventas
+  // ventas (tabla)
   const [rows, setRows] = useState([]);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(50);
@@ -54,104 +50,55 @@ export default function Reportes() {
   const [movs, setMovs] = useState([]);
 
   const [tab, setTab] = useState('ventas');
-
-  // evita doble start/stop en primer render
   const didMount = useRef(false);
 
-  // helper descarga CSV
   const triggerDownload = (blob, filename) => {
-    const url = URL.createObjectURL(new Blob([blob], { type: 'text/csv' }));
-    const a = document.createElement('a');
-    a.href = url; a.download = filename; a.click();
-    URL.revokeObjectURL(url);
+    const url = URL.createObjectURL(new Blob([blob], { type:'text/csv' }));
+    const a = document.createElement('a'); a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
   };
+  const paramsAgg = () => ({ from: from||undefined, to: to||undefined, estado, tz: TZ });
 
-  // helpers API
   const loadSales = async () => {
-    const r = await fetchSalesReport({ page, pageSize, from: from||undefined, to: to||undefined });
+    const r = await fetchSalesReport({ page, pageSize, ...paramsAgg() });
     setRows(r.rows); setTotal(r.total);
   };
   const reloadAgg = async () => {
-    const params = { from: from||undefined, to: to||undefined };
-    const [k, d, p, cat, cli, usr] = await Promise.all([
-      fetchKpis(params),
-      fetchSalesByDay(params),
-      fetchSalesByProduct(params),
-      fetchSalesByCategory(params),
-      fetchSalesByClient(params),
-      fetchSalesByUser(params),
+    const p = paramsAgg();
+    const [k, d, pr, cat, cli, usr] = await Promise.all([
+      fetchKpis(p), fetchSalesByDay(p), fetchSalesByProduct(p),
+      fetchSalesByCategory(p), fetchSalesByClient(p), fetchSalesByUser(p)
     ]);
-    setKpis(k); setByDay(d); setByProduct(p); setByCategory(cat); setByClient(cli); setByUser(usr);
+    setKpis(k); setByDay(d); setByProduct(pr); setByCategory(cat); setByClient(cli); setByUser(usr);
   };
   const loadInventory = async () => setInventory(await fetchInventory());
   const loadLowStock = async (threshold=2) => setLowStock(await fetchLowStock({ threshold }));
   const loadMovs = async () => setMovs(await fetchMovements({ from: from||undefined, to: to||undefined }));
 
-  // carga completa con overlay (manejado por esta página)
   const loadAll = async () => {
     start();
-    try {
-      await Promise.all([loadSales(), reloadAgg(), loadInventory(), loadLowStock(), loadMovs()]);
-    } catch (err) {
-      console.error('Error al cargar reportes:', err);
-    } finally {
-      // asegurar invocación
-      (() => stop())();
-    }
+    try { await Promise.all([loadSales(), reloadAgg(), loadInventory(), loadLowStock(), loadMovs()]); }
+    finally { (()=>stop())(); }
   };
 
-  // ----- MONTAJE -----
-  useEffect(() => {
-    // 1) FLUSH: apaga cualquier overlay heredado de la navegación (si tu context es contador, que no baje de 0)
-    try { stop(); } catch (_) { /* no-op */ }
-
-    // 2) ahora sí, carga con overlay propio y balanceado
-    loadAll();
-    // eslint-disable-next-line
-  }, []);
-
-  // cambio de página (solo tabla) — saltar la primera vez para no duplicar con loadAll()
-  useEffect(() => {
-    if (!didMount.current) {
-      didMount.current = true;
-      return;
-    }
-    // opción sin riesgo: NO usar overlay global en paginación
-    loadSales().catch(err => console.error('Error al paginar ventas:', err));
-
-    // Si prefieres overlay en paginación, usa esto y comenta la línea de arriba:
-    // start();
-    // loadSales()
-    //   .catch(err => console.error('Error al paginar ventas:', err))
-    //   .finally(() => stop());
-    // eslint-disable-next-line
-  }, [page]);
+  useEffect(() => { try { stop(); } catch(_){} loadAll(); /* eslint-disable-next-line */ }, []);
+  useEffect(() => { if (!didMount.current) { didMount.current = true; return; } loadSales(); /* eslint-disable-next-line */ }, [page]);
 
   const onApply = () => { setPage(1); loadAll(); };
 
   const columns = useMemo(()=>[
-    { Header: 'ID', accessor: 'id' },
-    { Header: 'Código', accessor: 'codigo' },
-    { Header: 'Fecha', accessor: 'fecha' },
-    { Header: 'Total', accessor: 'total_venta', Cell: ({ value }) => currency(value) },
-    { Header: 'Cliente', accessor: 'cliente' },
-    { Header: 'Usuario', accessor: 'usuario' },
+    { Header:'ID', accessor:'id' },
+    { Header:'Código', accessor:'codigo' },
+    { Header:'Fecha', accessor:'fecha' },
+    { Header:'Total', accessor:'total_venta', Cell: ({value}) => currency(value) },
+    { Header:'Cliente', accessor:'cliente' },
+    { Header:'Usuario', accessor:'usuario' },
   ],[]);
 
   const Presets = () => (
     <Stack direction="row" spacing={1}>
-      <Button size="small" onClick={()=>{
-        const t = new Date().toISOString().slice(0,10);
-        setFrom(t); setTo(t);
-      }}>Hoy</Button>
-      <Button size="small" onClick={()=>{
-        const d=new Date(); d.setDate(d.getDate()-6);
-        setFrom(d.toISOString().slice(0,10)); setTo(new Date().toISOString().slice(0,10));
-      }}>7d</Button>
-      <Button size="small" onClick={()=>{
-        const d=new Date(); d.setDate(d.getDate()-29);
-        setFrom(d.toISOString().slice(0,10)); setTo(new Date().toISOString().slice(0,10));
-      }}>30d</Button>
+      <Button size="small" onClick={()=>{ const t=new Date().toISOString().slice(0,10); setFrom(t); setTo(t); }}>Hoy</Button>
+      <Button size="small" onClick={()=>{ const d=new Date(); d.setDate(d.getDate()-6); setFrom(d.toISOString().slice(0,10)); setTo(new Date().toISOString().slice(0,10)); }}>7d</Button>
+      <Button size="small" onClick={()=>{ const d=new Date(); d.setDate(d.getDate()-29); setFrom(d.toISOString().slice(0,10)); setTo(new Date().toISOString().slice(0,10)); }}>30d</Button>
       <Button size="small" onClick={()=>{ setFrom(''); setTo(''); }}>Clear</Button>
     </Stack>
   );
@@ -171,16 +118,23 @@ export default function Reportes() {
         <Stack direction={{ xs:'column', sm:'row' }} spacing={2} alignItems="center">
           <TextField label="Desde" type="date" size="small" InputLabelProps={{ shrink: true }} value={from} onChange={e=>setFrom(e.target.value)} />
           <TextField label="Hasta" type="date" size="small" InputLabelProps={{ shrink: true }} value={to} onChange={e=>setTo(e.target.value)} />
+          <FormControl size="small" sx={{ minWidth: 160 }}>
+            <InputLabel>Estado (pago)</InputLabel>
+            <Select label="Estado (pago)" value={estado} onChange={(e)=>setEstado(e.target.value)}>
+              <MenuItem value="pagada">Pagada</MenuItem>
+              <MenuItem value="pendiente">Pendiente</MenuItem>
+              <MenuItem value="cancelada">Cancelada</MenuItem>
+              <MenuItem value="todas">Todas</MenuItem>
+            </Select>
+          </FormControl>
           <Presets />
           <Button variant="contained" onClick={onApply}>Aplicar</Button>
           <Button variant="outlined" onClick={async ()=>{
             start();
             try {
-              const blob = await downloadSalesCsv({ from: from||undefined, to: to||undefined });
+              const blob = await downloadSalesCsv({ ...paramsAgg() });
               triggerDownload(blob, 'sales_report.csv');
-            } catch (err) {
-              console.error('Error al descargar CSV de ventas:', err);
-            } finally { (() => stop())(); }
+            } finally { (()=>stop())(); }
           }}>Exportar CSV</Button>
         </Stack>
       </Paper>
@@ -200,13 +154,14 @@ export default function Reportes() {
         </Tabs>
       </Paper>
 
-      {/* CONTENIDOS */}
+      {/* Contenido: ventas */}
       {tab==='ventas' && (
         <Paper>
           <DataTable rows={rows} columns={columns} pagination={{ page, pageSize, total, onPageChange:setPage }} />
         </Paper>
       )}
 
+      {/* Por día */}
       {tab==='dia' && (
         <Paper sx={{ p:2 }}>
           <ResponsiveContainer width="100%" height={320}>
@@ -221,17 +176,16 @@ export default function Reportes() {
         </Paper>
       )}
 
+      {/* Por producto */}
       {tab==='prod' && (
         <Paper sx={{ p:2 }}>
           <Stack direction="row" spacing={2} justifyContent="flex-end" sx={{ mb:1 }}>
             <Button size="small" onClick={async ()=>{
               start();
               try {
-                const blob = await downloadCsvGeneric('/sales-by-product.csv', { from, to });
+                const blob = await downloadCsvGeneric('/sales-by-product.csv', paramsAgg());
                 triggerDownload(blob, 'sales_by_product.csv');
-              } catch (err) {
-                console.error('Error al descargar CSV por producto:', err);
-              } finally { (() => stop())(); }
+              } finally { (()=>stop())(); }
             }}>CSV</Button>
           </Stack>
           <ResponsiveContainer width="100%" height={340}>
@@ -248,17 +202,16 @@ export default function Reportes() {
         </Paper>
       )}
 
+      {/* Por categoría */}
       {tab==='cat' && (
         <Paper sx={{ p:2 }}>
           <Stack direction="row" spacing={2} justifyContent="flex-end" sx={{ mb:1 }}>
             <Button size="small" onClick={async ()=>{
               start();
               try {
-                const blob = await downloadCsvGeneric('/sales-by-category.csv', { from, to });
+                const blob = await downloadCsvGeneric('/sales-by-category.csv', paramsAgg());
                 triggerDownload(blob, 'sales_by_category.csv');
-              } catch (err) {
-                console.error('Error al descargar CSV por categoría:', err);
-              } finally { (() => stop())(); }
+              } finally { (()=>stop())(); }
             }}>CSV</Button>
           </Stack>
           <ResponsiveContainer width="100%" height={340}>
@@ -271,17 +224,16 @@ export default function Reportes() {
         </Paper>
       )}
 
+      {/* Por cliente */}
       {tab==='cli' && (
         <Paper sx={{ p:2 }}>
           <Stack direction="row" spacing={2} justifyContent="flex-end" sx={{ mb:1 }}>
             <Button size="small" onClick={async ()=>{
               start();
               try {
-                const blob = await downloadCsvGeneric('/sales-by-client.csv', { from, to });
+                const blob = await downloadCsvGeneric('/sales-by-client.csv', paramsAgg());
                 triggerDownload(blob, 'sales_by_client.csv');
-              } catch (err) {
-                console.error('Error al descargar CSV por cliente:', err);
-              } finally { (() => stop())(); }
+              } finally { (()=>stop())(); }
             }}>CSV</Button>
           </Stack>
           <ResponsiveContainer width="100%" height={340}>
@@ -298,23 +250,22 @@ export default function Reportes() {
         </Paper>
       )}
 
+      {/* Por usuario */}
       {tab==='usr' && (
         <Paper sx={{ p:2 }}>
           <Stack direction="row" spacing={2} justifyContent="flex-end" sx={{ mb:1 }}>
             <Button size="small" onClick={async ()=>{
               start();
               try {
-                const blob = await downloadCsvGeneric('/sales-by-user.csv', { from, to });
+                const blob = await downloadCsvGeneric('/sales-by-user.csv', paramsAgg());
                 triggerDownload(blob, 'sales_by_user.csv');
-              } catch (err) {
-                console.error('Error al descargar CSV por usuario:', err);
-              } finally { (() => stop())(); }
+              } finally { (()=>stop())(); }
             }}>CSV</Button>
           </Stack>
           <ResponsiveContainer width="100%" height={340}>
             <BarChart data={byUser}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="usuario" />
+              <XAxis dataKey="usuario" hide />
               <YAxis />
               <Tooltip />
               <Legend />
@@ -325,44 +276,25 @@ export default function Reportes() {
         </Paper>
       )}
 
+      {/* Inventario */}
       {tab==='inv' && (
         <Paper sx={{ p:2 }}>
-          <Stack direction="row" spacing={2} justifyContent="flex-end" sx={{ mb:1 }}>
-            <Button size="small" onClick={async ()=>{
-              start();
-              try {
-                const blob = await downloadCsvGeneric('/inventory.csv');
-                triggerDownload(blob, 'inventory.csv');
-              } catch (err) {
-                console.error('Error al descargar CSV de inventario:', err);
-              } finally { (() => stop())(); }
-            }}>CSV</Button>
-          </Stack>
+          <Typography variant="h6" sx={{ mb:1 }}>Inventario (valuación)</Typography>
           <DataTable rows={inventory} columns={[
             { Header:'ID', accessor:'id' },
             { Header:'Producto', accessor:'nombre' },
             { Header:'Stock', accessor:'stock' },
-            { Header:'Precio venta', accessor:'precio_venta', Cell:({value})=>currency(value) },
-            { Header:'Costo promedio', accessor:'costo_promedio', Cell:({value})=>currency(value) },
-            { Header:'Valuación', accessor:'valuacion', Cell:({value})=>currency(value) },
+            { Header:'Precio', accessor:'precio_venta', Cell: ({value})=>currency(value) },
+            { Header:'Costo prom.', accessor:'costo_promedio', Cell: ({value})=>currency(value) },
+            { Header:'Valuación', accessor:'valuacion', Cell: ({value})=>currency(value) },
           ]} />
         </Paper>
       )}
 
+      {/* Bajo stock */}
       {tab==='low' && (
         <Paper sx={{ p:2 }}>
-          <Stack direction="row" spacing={2} justifyContent="space-between" sx={{ mb:1 }}>
-            <Typography variant="subtitle1">Umbral: ≤ 2</Typography>
-            <Button size="small" onClick={async ()=>{
-              start();
-              try {
-                const blob = await downloadCsvGeneric('/low-stock.csv', { threshold: 2 });
-                triggerDownload(blob, 'low_stock.csv');
-              } catch (err) {
-                console.error('Error al descargar CSV de bajo stock:', err);
-              } finally { (() => stop())(); }
-            }}>CSV</Button>
-          </Stack>
+          <Typography variant="h6" sx={{ mb:1 }}>Bajo stock (≤ 2)</Typography>
           <DataTable rows={lowStock} columns={[
             { Header:'ID', accessor:'id' },
             { Header:'Producto', accessor:'nombre' },
@@ -371,25 +303,16 @@ export default function Reportes() {
         </Paper>
       )}
 
+      {/* Movimientos */}
       {tab==='mov' && (
         <Paper sx={{ p:2 }}>
-          <Stack direction="row" spacing={2} justifyContent="flex-end" sx={{ mb:1 }}>
-            <Button size="small" onClick={async ()=>{
-              start();
-              try {
-                const blob = await downloadCsvGeneric('/movements.csv', { from, to });
-                triggerDownload(blob, 'movements.csv');
-              } catch (err) {
-                console.error('Error al descargar CSV de movimientos:', err);
-              } finally { (() => stop())(); }
-            }}>CSV</Button>
-          </Stack>
+          <Typography variant="h6" sx={{ mb:1 }}>Movimientos</Typography>
           <DataTable rows={movs} columns={[
             { Header:'ID', accessor:'id_transaccion' },
             { Header:'Producto', accessor:'nombre' },
             { Header:'Tipo', accessor:'tipo_transaccion' },
             { Header:'Fecha', accessor:'fecha_transaccion' },
-            { Header:'Precio', accessor:'precio_transaccion', Cell:({value})=>currency(value) },
+            { Header:'Precio', accessor:'precio_transaccion', Cell: ({value})=>currency(value) },
             { Header:'Cantidad', accessor:'cantidad_transaccion' },
           ]} />
         </Paper>

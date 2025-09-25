@@ -43,9 +43,7 @@ app.use('/api/clientes',       require('./routes/clientes'));
 app.use('/api/imagenes',       require('./routes/imagenes'));
 app.use('/api/usuarios', require('./routes/usuarios'));
 app.use('/api/roles',         require('./routes/roles'));
-
-
-
+app.use('/api/transportistas', require('./routes/transportistas'));
 app.use('/api/reports', require('./routes/reports')); 
 // 4) (Opcional) Si sirves tu build de React desde aquí, ponlo después de las rutas de API:
 // app.use(express.static(path.join(__dirname, '../frontend/build')));

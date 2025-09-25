@@ -1,4 +1,5 @@
 // src/contexts/AuthContext.js
+// para autenticación y manejo de usuario
 import { createContext, useState, useEffect } from 'react';
 import { login as apiLogin } from '../api/usuarios';
 

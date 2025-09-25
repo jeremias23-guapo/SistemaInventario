@@ -1,32 +1,33 @@
+// routes/reports.js
 const express = require('express');
+const ctl = require('../controllers/ReporteController');
 const router = express.Router();
-const auth = require('../middlewares/authenticate');
-const ctrl = require('../controllers/ReporteController');
 
-router.use(auth);
+router.get('/sales', ctl.salesReport);
+router.get('/sales.csv', ctl.salesReportCsv);
 
-// EXISTENTES
-router.get('/sales', ctrl.salesReport);
-router.get('/sales.csv', ctrl.salesReportCsv);
+router.get('/kpis', ctl.kpis);
+router.get('/sales-by-day', ctl.salesByDay);
 
-// NUEVAS
-router.get('/kpis', ctrl.kpis);
-router.get('/sales-by-day', ctrl.salesByDay);
-router.get('/sales-by-product', ctrl.salesByProduct);
-router.get('/sales-by-category', ctrl.salesByCategory);
-router.get('/sales-by-client', ctrl.salesByClient);
-router.get('/sales-by-user', ctrl.salesByUser);
+router.get('/sales-by-product', ctl.salesByProduct);
+router.get('/sales-by-product.csv', ctl.salesByProductCsv);
 
-router.get('/inventory', ctrl.inventory);
-router.get('/low-stock', ctrl.lowStock);
-router.get('/movements', ctrl.movements);
+router.get('/sales-by-category', ctl.salesByCategory);
+router.get('/sales-by-category.csv', ctl.salesByCategoryCsv);
 
-router.get('/sales-by-product.csv', ctrl.salesByProductCsv);
-router.get('/sales-by-category.csv', ctrl.salesByCategoryCsv);
-router.get('/sales-by-client.csv', ctrl.salesByClientCsv);
-router.get('/sales-by-user.csv', ctrl.salesByUserCsv);
-router.get('/inventory.csv', ctrl.inventoryCsv);
-router.get('/low-stock.csv', ctrl.lowStockCsv);
-router.get('/movements.csv', ctrl.movementsCsv);
+router.get('/sales-by-client', ctl.salesByClient);
+router.get('/sales-by-client.csv', ctl.salesByClientCsv);
+
+router.get('/sales-by-user', ctl.salesByUser);
+router.get('/sales-by-user.csv', ctl.salesByUserCsv);
+
+router.get('/inventory', ctl.inventory);
+router.get('/inventory.csv', ctl.inventoryCsv);
+
+router.get('/low-stock', ctl.lowStock);
+router.get('/low-stock.csv', ctl.lowStockCsv);
+
+router.get('/movements', ctl.movements);
+router.get('/movements.csv', ctl.movementsCsv);
 
 module.exports = router;

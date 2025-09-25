@@ -1,4 +1,5 @@
 // src/components/Layout.jsx
+//formulario de layout con drawer y appbar principal
 import React, { useContext, useState } from 'react';
 import {
   Box, Drawer, List, ListItemButton, ListItemIcon,
@@ -108,6 +109,18 @@ export default function Layout() {
               <ListItemIcon><Inventory2 /></ListItemIcon>
               <ListItemText primary="Productos" />
             </ListItemButton>
+
+
+
+  <ListItemButton
+              onClick={() => handleNav('/transportistas')}
+              selected={isActive('/transportistas')}
+            >
+              <ListItemIcon><Inventory2 /></ListItemIcon>
+              <ListItemText primary="transportistas" />
+            </ListItemButton>
+
+
 
 
             <ListItemButton

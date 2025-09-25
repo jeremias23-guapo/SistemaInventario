@@ -36,45 +36,92 @@ class OrdenCompraRepo {
     );
     return rows[0] || null;
   }
-static async search({ codigo, fecha }) {
-  const conditions = [];
-  const params = [];
 
-  if (codigo) {
-    // Buscar por prefijo: "OC" -> "OC%"
-    conditions.push('oc.codigo LIKE ?');
-    params.push(`${codigo}%`);
+  // Búsqueda sin paginar (compatibilidad)
+  static async search({ codigo, fecha }) {
+    const conditions = [];
+    const params = [];
+
+    if (codigo) {
+      conditions.push('oc.codigo LIKE ?');
+      params.push(`${codigo}%`);
+    }
+
+    if (fecha) {
+      // Convertir fecha local (America/El_Salvador −06:00) a rango UTC
+      const start = new Date(`${fecha}T00:00:00-06:00`);
+      const end   = new Date(`${fecha}T24:00:00-06:00`);
+      const pad = n => String(n).padStart(2, '0');
+      const fmt = d => `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+      const startUtc = fmt(start);
+      const endUtc   = fmt(end);
+
+      conditions.push('(oc.fecha >= ? AND oc.fecha < ?)');
+      params.push(startUtc, endUtc);
+    }
+
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const [rows] = await pool.query(
+      `SELECT oc.id, oc.codigo, oc.proveedor_id, p.nombre AS proveedor_nombre,
+              oc.fecha, oc.estado, oc.total_orden
+       FROM ordenes_compra oc
+       JOIN proveedores p ON oc.proveedor_id = p.id
+       ${where}
+       ORDER BY oc.fecha DESC`,
+      params
+    );
+    return rows;
   }
 
-  if (fecha) {
-    // fecha = 'YYYY-MM-DD' del <input type="date">
-    const start = new Date(`${fecha}T00:00:00-06:00`);
-    const end   = new Date(`${fecha}T24:00:00-06:00`);
-    const pad = n => String(n).padStart(2, '0');
-    const fmt = d => `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
-    const startUtc = fmt(start); // ej: 2025-09-02 06:00:00
-    const endUtc   = fmt(end);   // ej: 2025-09-03 06:00:00
+  // === NUEVO: búsqueda + conteo con paginación ===
+  static async searchPaginated({ codigo, fecha }, { page, pageSize }) {
+    const conditions = [];
+    const params = [];
 
-    conditions.push('(oc.fecha >= ? AND oc.fecha < ?)');
-    params.push(startUtc, endUtc);
+    if (codigo) {
+      conditions.push('oc.codigo LIKE ?');
+      params.push(`${codigo}%`);
+    }
+
+    if (fecha) {
+      const start = new Date(`${fecha}T00:00:00-06:00`);
+      const end   = new Date(`${fecha}T24:00:00-06:00`);
+      const pad = n => String(n).padStart(2, '0');
+      const fmt = d => `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+      const startUtc = fmt(start);
+      const endUtc   = fmt(end);
+
+      conditions.push('(oc.fecha >= ? AND oc.fecha < ?)');
+      params.push(startUtc, endUtc);
+    }
+
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const offset = (page - 1) * pageSize;
+
+    const [rows] = await pool.query(
+      `SELECT oc.id, oc.codigo, oc.proveedor_id, p.nombre AS proveedor_nombre,
+              oc.fecha, oc.estado, oc.total_orden
+       FROM ordenes_compra oc
+       JOIN proveedores p ON oc.proveedor_id = p.id
+       ${where}
+       ORDER BY oc.fecha DESC
+       LIMIT ? OFFSET ?`,
+      [...params, Number(pageSize), Number(offset)]
+    );
+
+    const [[countRow]] = await pool.query(
+      `SELECT COUNT(*) AS total
+         FROM ordenes_compra oc
+         JOIN proveedores p ON oc.proveedor_id = p.id
+         ${where}`,
+      params
+    );
+
+    return { rows, total: Number(countRow.total || 0) };
   }
 
-  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-
-  const [rows] = await pool.query(
-    `
-    SELECT oc.id, oc.codigo, oc.proveedor_id, p.nombre AS proveedor_nombre,
-           oc.fecha, oc.estado, oc.total_orden
-    FROM ordenes_compra oc
-    JOIN proveedores p ON oc.proveedor_id = p.id
-    ${where}
-    ORDER BY oc.fecha DESC
-    `,
-    params
-  );
-  return rows;
-}
-  // Obtiene todas las líneas de detalle de una orden
+  // Obtiene líneas de detalle
   static async fetchDetalle(connOrPool, ordenId) {
     const executor = connOrPool.query ? connOrPool : pool;
     const [rows] = await executor.query(
@@ -87,7 +134,7 @@ static async search({ codigo, fecha }) {
     return rows;
   }
 
-  // Elimina todas las líneas de detalle de una orden
+  // Elimina detalles
   static async deleteDetalle(conn, ordenId) {
     await conn.query(
       `DELETE FROM detalle_compra WHERE orden_compra_id = ?`,
@@ -95,7 +142,7 @@ static async search({ codigo, fecha }) {
     );
   }
 
-  // Inserta una entrada en historial_transacciones
+  // Historial transacciones
   static async insertHistorial(conn, { id_producto, id_compra, tipo_transaccion, precio_transaccion, cantidad_transaccion }) {
     await conn.query(
       `INSERT INTO historial_transacciones
@@ -105,7 +152,6 @@ static async search({ codigo, fecha }) {
     );
   }
 
-  // Elimina el historial de transacciones de compra para una orden
   static async deleteHistorial(conn, ordenId) {
     await conn.query(
       `DELETE FROM historial_transacciones
@@ -114,7 +160,7 @@ static async search({ codigo, fecha }) {
     );
   }
 
-  // Actualiza el stock de un producto en delta (+/-)
+  // Stock
   static async updateStock(conn, productoId, delta) {
     await conn.query(
       `UPDATE productos SET stock = stock + ? WHERE id = ?`,
@@ -122,7 +168,7 @@ static async search({ codigo, fecha }) {
     );
   }
 
-  // Actualiza la cabecera de la orden
+  // Cabecera
   static async updateCabecera(conn, id, { codigo, proveedor_id, estado, total }) {
     await conn.query(
       `UPDATE ordenes_compra
@@ -132,7 +178,6 @@ static async search({ codigo, fecha }) {
     );
   }
 
-  // Suma la cantidad total de cada producto en una orden
   static async sumCantidadPorProducto(conn, ordenId) {
     const [rows] = await conn.query(
       `SELECT producto_id, SUM(cantidad) AS total_cant
@@ -144,7 +189,6 @@ static async search({ codigo, fecha }) {
     return rows;
   }
 
-  // Elimina la cabecera de la orden
   static async deleteCabecera(conn, ordenId) {
     await conn.query(
       `DELETE FROM ordenes_compra WHERE id = ?`,

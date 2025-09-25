@@ -22,10 +22,40 @@ class OrdenCompraService {
     return { totalOrden, lineasConSub };
   }
 
- static async search(filters) {
-    return OrdenCompraRepo.search(filters); // { codigo, fecha }
+  static async search(filters) {
+    return OrdenCompraRepo.search(filters); // legacy sin paginar
   }
-  
+
+  // === NUEVO: lista paginada ===
+  static async listPaginated({ page = 1, pageSize = 10 }) {
+    const offset = (page - 1) * pageSize;
+    const [rows] = await pool.query(
+      `SELECT oc.id, oc.codigo, oc.proveedor_id, p.nombre AS proveedor_nombre,
+              oc.fecha, oc.estado, oc.total_orden
+         FROM ordenes_compra oc
+         JOIN proveedores p ON oc.proveedor_id = p.id
+        ORDER BY oc.fecha DESC
+        LIMIT ? OFFSET ?`,
+      [Number(pageSize), Number(offset)]
+    );
+
+    const [[countRow]] = await pool.query(
+      `SELECT COUNT(*) AS total FROM ordenes_compra`
+    );
+
+    const total = Number(countRow.total || 0);
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+    return { data: rows, pagination: { page, pageSize, total, totalPages } };
+  }
+
+  // === NUEVO: búsqueda paginada ===
+  static async searchPaginated(filters, { page = 1, pageSize = 10 }) {
+    const { rows, total } = await OrdenCompraRepo.searchPaginated(filters, { page, pageSize });
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    return { data: rows, pagination: { page, pageSize, total, totalPages } };
+  }
+
   static async create(data) {
     const conn = await pool.getConnection();
     try {
@@ -39,17 +69,15 @@ class OrdenCompraService {
         total: totalOrden
       });
 
-      // Ajuste de stock para evitar deadlocks: procesar en orden ascendente de producto_id
+      // Ajuste de stock: procesar en orden ascendente de producto_id
       const newMap = Object.fromEntries(lineasConSub.map(ln => [ln.producto_id, ln.cantidad]));
       const ids = sortIds(Object.keys(newMap));
       if (data.estado === 'recibida') {
         for (const pid of ids) {
-          const qty = newMap[pid];
-          await OrdenCompraRepo.updateStock(conn, pid, qty);
+          await OrdenCompraRepo.updateStock(conn, pid, newMap[pid]);
         }
       }
 
-      // Insertar detalle e historial tras ajustar stock
       for (const ln of lineasConSub) {
         const restante = data.estado === 'recibida' ? ln.cantidad : 0;
         await OrdenCompraRepo.insertDetalle(conn, { ordenId, ...ln, cantidad_restante: restante });
@@ -102,7 +130,6 @@ class OrdenCompraService {
       const estadoNew = data.estado;
       const { totalOrden, lineasConSub } = this._prepararLineas(data.lineas);
 
-      // Ajuste de stock solo si nueva está en recibida
       if (estadoNew === 'recibida') {
         const oldMap = estadoOld === 'recibida'
           ? Object.fromEntries(
@@ -110,7 +137,7 @@ class OrdenCompraService {
             )
           : {};
         const newMap = Object.fromEntries(lineasConSub.map(ln => [ln.producto_id, ln.cantidad]));
-        const allIds = sortIds(new Set([...Object.keys(oldMap), ...Object.keys(newMap)]));
+        const allIds = Array.from(new Set([...Object.keys(oldMap), ...Object.keys(newMap)])).map(Number).sort((a, b) => a - b);
         for (const pid of allIds) {
           const delta = (newMap[pid] || 0) - (oldMap[pid] || 0);
           if (delta !== 0) {
@@ -119,10 +146,8 @@ class OrdenCompraService {
         }
       }
 
-      // Borrar detalle e historial antiguos
       await OrdenCompraRepo.deleteHistorial(conn, id);
       await OrdenCompraRepo.deleteDetalle(conn, id);
-      // Actualizar cabecera
       await OrdenCompraRepo.updateCabecera(conn, id, {
         codigo: data.codigo,
         proveedor_id: data.proveedor_id,
@@ -130,7 +155,6 @@ class OrdenCompraService {
         total: totalOrden
       });
 
-      // Insertar nuevas líneas e historial si recibida
       for (const ln of lineasConSub) {
         const restante = estadoNew === 'recibida' ? ln.cantidad : 0;
         await OrdenCompraRepo.insertDetalle(conn, { ordenId: id, ...ln, cantidad_restante: restante });

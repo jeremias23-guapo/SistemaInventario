@@ -19,13 +19,17 @@ import {
   updateUsuario,
   fetchUsuario
 } from '../api/usuarios';
-import { useLoading } from '../contexts/LoadingContext'; // 👈 overlay global
+import { useLoading } from '../contexts/LoadingContext';
+import { useToast } from '../contexts/ToastContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 
 export default function UsuarioForm() {
   const { id } = useParams();
   const isEdit = Boolean(id);
   const navigate = useNavigate();
-  const { start, stop } = useLoading(); // 👈
+  const { start, stop } = useLoading();
+  const { showToast } = useToast();
+  const confirm = useConfirm();
 
   const [form, setForm] = useState({
     nombre: '',
@@ -36,6 +40,7 @@ export default function UsuarioForm() {
   const [roles, setRoles] = useState([]);
   const [loading, setLoading] = useState(false); // spinner local para edición
   const [error, setError] = useState('');
+  const [dirty, setDirty] = useState(false);
 
   // Al entrar al form: apaga overlay global (la lista lo dejó encendido)
   useEffect(() => { stop(); }, [stop]);
@@ -44,8 +49,11 @@ export default function UsuarioForm() {
   useEffect(() => {
     getRoles()
       .then(res => setRoles(Array.isArray(res?.data) ? res.data : (res ?? [])))
-      .catch(() => setError('No se pudieron cargar los roles'));
-  }, []);
+      .catch(() => {
+        setError('No se pudieron cargar los roles');
+        showToast({ message: 'No se pudieron cargar los roles', severity: 'error' });
+      });
+  }, [showToast]);
 
   // Si edito, cargo datos del usuario
   useEffect(() => {
@@ -60,35 +68,67 @@ export default function UsuarioForm() {
           password: '',       // vacío por seguridad
           rol_id: data.rol_id ?? ''
         });
+        setDirty(false);
       })
-      .catch(() => setError('No se pudo cargar el usuario'))
+      .catch(() => {
+        setError('No se pudo cargar el usuario');
+        showToast({ message: 'No se pudo cargar el usuario', severity: 'error' });
+      })
       .finally(() => setLoading(false));
-  }, [id, isEdit]);
+  }, [id, isEdit, showToast]);
 
   const handleChange = e => {
     const { name, value } = e.target;
     setForm(prev => ({ ...prev, [name]: value }));
+    setDirty(true);
   };
 
   const handleSubmit = async e => {
     e.preventDefault();
     setError('');
-    start(); // 👈 overlay durante guardar + navegación
+
+    // Confirmar sólo en actualización
+    if (isEdit) {
+      const ok = await confirm({
+        title: 'Confirmar cambios',
+        content: '¿Estás seguro de realizar los cambios?',
+        confirmText: 'Sí, guardar',
+        cancelText: 'Cancelar',
+        confirmColor: 'warning',
+      });
+      if (!ok) return;
+    }
+
+    start(); // overlay durante guardar + navegación
     try {
       if (isEdit) {
         await updateUsuario(id, form);
+        showToast({ message: 'Usuario actualizado', severity: 'success' });
       } else {
         await createUsuario(form);
+        showToast({ message: 'Usuario creado', severity: 'success' });
       }
-      navigate('/usuarios'); // la lista apagará overlay al montar
+      navigate('/usuarios', { replace: true }); // la lista apagará overlay al montar
     } catch (err) {
-      setError(err?.message || 'Error al guardar');
-      stop(); // 👈 si no navega por error, apaga overlay
+      const msg = err?.response?.data?.error || err?.message || 'Error al guardar';
+      setError(msg);
+      showToast({ message: msg, severity: 'error' });
+      stop(); // si no navega por error, apaga overlay
     }
   };
 
-  const handleCancel = () => {
-    start();     // 👈 overlay durante la navegación
+  const handleCancel = async () => {
+    if (dirty) {
+      const ok = await confirm({
+        title: 'Descartar cambios',
+        content: 'Tienes cambios sin guardar. ¿Salir sin guardar?',
+        confirmText: 'Salir sin guardar',
+        cancelText: 'Seguir editando',
+        confirmColor: 'warning',
+      });
+      if (!ok) return;
+    }
+    start();     // overlay durante la navegación
     navigate('/usuarios');
   };
 

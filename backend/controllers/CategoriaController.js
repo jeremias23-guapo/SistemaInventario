@@ -3,8 +3,16 @@ const CategoriaService = require('../services/CategoriaService');
 
 exports.getCategorias = async (req, res) => {
   try {
-    const lista = await CategoriaService.listarCategorias();
-    res.json(lista);
+    const { page, limit, q } = req.query;
+
+    if (!page && !limit && !q) {
+      const lista = await CategoriaService.listarCategorias();
+      return res.json(lista);
+    }
+
+    const { items, totalParents } = await CategoriaService.listarCategoriasPaginadas(page, limit, q);
+    res.set('X-Total-Count', String(totalParents));
+    return res.json(items);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -21,12 +29,12 @@ exports.getCategoria = async (req, res) => {
 };
 
 exports.createCategoria = async (req, res) => {
-  console.log('📝 Body recibido:', req.body);
+  console.log('?? Body recibido:', req.body);
   try {
     const result = await CategoriaService.crearCategoria(req.body);
     res.status(201).json(result);
   } catch (e) {
-    console.error('❌ Error al crear categoría:', e);
+    console.error('? Error al crear categoría:', e);
     if (e.message.startsWith('Validación:')) {
       return res.status(400).json({ error: e.message });
     }
@@ -54,10 +62,19 @@ exports.deleteCategoria = async (req, res) => {
   }
 };
 
+// === NUEVO: padres con paginado/búsqueda para Autocomplete ===
 exports.getCategoriasPadre = async (req, res) => {
   try {
-    const lista = await CategoriaService.listarCategoriasPadre();  // Solo categorías padres
-    res.json(lista);
+    const { page, limit, q } = req.query;
+
+    if (!page && !limit && !q) {
+      const lista = await CategoriaService.listarCategoriasPadre();
+      return res.json(lista);
+    }
+
+    const { items, total } = await CategoriaService.listarSoloPadres({ page, limit, q });
+    res.set('X-Total-Count', String(total));
+    return res.json(items);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -67,16 +84,7 @@ exports.getSubcategorias = async (req, res) => {
   const { categoriaId } = req.params;
   try {
     const subcategorias = await CategoriaService.listarSubcategorias(categoriaId);
-    res.json(subcategorias);  // Devuelve subcategorías de la categoría seleccionada
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-};
-// backend/controllers/CategoriaController.js
-exports.getCategoriasPadre = async (req, res) => {
-  try {
-    const lista = await CategoriaService.listarCategoriasPadre();
-    res.json(lista);
+    res.json(subcategorias);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

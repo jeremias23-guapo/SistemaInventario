@@ -1,4 +1,4 @@
-// src/pages/ProductoForm.jsx
+// frontend/src/pages/ProductoForm.jsx
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Container,
@@ -12,24 +12,23 @@ import {
   FormControl,
   InputLabel,
   Select,
-  Switch,
-  FormControlLabel,
 } from '@mui/material';
-import {
-  createProducto,
-  fetchProducto,
-  updateProducto,
-} from '../api/productos';
+
+import { createProducto, fetchProducto, updateProducto } from '../api/productos';
 import { fetchMarcas } from '../api/marcas';
 import { fetchCategorias } from '../api/categorias';
 import { subirImagen } from '../api/imagenes';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useLoading } from '../contexts/LoadingContext'; // 👈 overlay global
+import { useLoading } from '../contexts/LoadingContext';
+import { useConfirm } from '../contexts/ConfirmContext';
+import { useToast } from '../contexts/ToastContext';
 
 export default function ProductoForm() {
   const { id } = useParams();
   const nav = useNavigate();
   const { start, stop } = useLoading();
+  const { showToast } = useToast();
+  const confirm = useConfirm();
 
   // Listas para selects
   const [marcas, setMarcas] = useState([]);
@@ -44,21 +43,24 @@ export default function ProductoForm() {
   const [form, setForm] = useState({
     nombre: '',
     descripcion: '',
-    precio_compra: '',
+    // Campos informativos (solo lectura en el form)
+    precio_compra: 0,
     precio_venta: '',
-    stock: '',
-    activo: true,
+    stock: 0,
     marca_id: '',
     categoria_id: '',
     imagen_url: '',
     presentacion: '',
   });
 
+  // Flag de cambios sin guardar
+  const [dirty, setDirty] = useState(false);
+
   // Evitar updates tras desmontar
   const mountedRef = useRef(true);
   useEffect(() => () => { mountedRef.current = false; }, []);
 
-  // 🔻 Al montar el form, apaga el overlay que quedó encendido desde la lista
+  // Al montar el form, apaga el overlay que quedó encendido desde la lista
   useEffect(() => { stop(); }, [stop]);
 
   // Carga de marcas y categorías
@@ -71,8 +73,10 @@ export default function ProductoForm() {
         setCategorias(Array.isArray(cRes.data) ? cRes.data : []);
       } catch (err) {
         console.error('Error cargando catálogos:', err);
+        showToast({ message: 'Error cargando catálogos', severity: 'error' });
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Carga producto en edición
@@ -86,10 +90,9 @@ export default function ProductoForm() {
         setForm({
           nombre: data.nombre || '',
           descripcion: data.descripcion || '',
-          precio_compra: data.precio_compra ?? '',
+          precio_compra: Number(data.precio_compra ?? 0),
           precio_venta: data.precio_venta ?? '',
-          stock: data.stock ?? '',
-          activo: !!data.activo,
+          stock: Number(data.stock ?? 0),
           marca_id: data.marca_id ? String(data.marca_id) : '',
           categoria_id: data.categoria_id ? String(data.categoria_id) : '',
           imagen_url: data.imagen_url || '',
@@ -97,24 +100,29 @@ export default function ProductoForm() {
         });
         if (data.imagen_url) setPreview(data.imagen_url);
 
-        const sub = categorias.find(c => c.id === data.categoria_id);
+        const sub = categorias.find((c) => c.id === data.categoria_id);
         if (sub) setPadreSel(String(sub.parent_id || ''));
+        setDirty(false); // tras cargar, no hay cambios pendientes
       } catch (err) {
         console.error('Error cargando producto:', err);
+        showToast({ message: 'Error cargando producto', severity: 'error' });
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, marcas, categorias]);
 
-  const handleChange = e => {
-    const { name, value, type, checked } = e.target;
-    setForm(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+    setDirty(true);
   };
 
-  const handleFileChange = e => {
+  const handleFileChange = (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
     setFile(f);
     setPreview(URL.createObjectURL(f));
+    setDirty(true);
   };
 
   // Libera URL de preview cuando cambie/termine
@@ -124,51 +132,74 @@ export default function ProductoForm() {
     };
   }, [preview]);
 
-  const handleSubmit = async e => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // 🔻 Encendemos overlay para cubrir submit + navegación
-    start();
+
+    // Confirmar solo si estás editando
+    if (id) {
+      const ok = await confirm({
+        title: 'Actualizar producto',
+        content: '¿Estás seguro de actualizar este producto?',
+        confirmText: 'Sí, actualizar',
+        cancelText: 'Cancelar',
+        confirmColor: 'warning',
+      });
+      if (!ok) return;
+    }
+
+    start(); // overlay mientras procesa y navega
     try {
-      let imagen_url = form.imagen_url;
+      let imagen_url = form.imagen_url || '';
       if (file) {
         const res = await subirImagen(file);
-        imagen_url = res.data.url;
+        imagen_url = res?.data?.url ?? res?.url ?? imagen_url;
       }
 
+      // No enviar precio_compra ni stock (los maneja compras)
       const payload = {
         nombre: form.nombre,
         descripcion: form.descripcion,
-        precio_compra: parseFloat(form.precio_compra) || 0,
         precio_venta: parseFloat(form.precio_venta) || 0,
-        stock: parseInt(form.stock, 10) || 0,
-        activo: form.activo,
         marca_id: form.marca_id ? Number(form.marca_id) : null,
         categoria_id: form.categoria_id ? Number(form.categoria_id) : null,
         imagen_url,
         presentacion: form.presentacion || '',
       };
 
-      if (id) await updateProducto(id, payload);
-      else await createProducto(payload);
+      if (id) {
+        await updateProducto(id, payload);
+        showToast({ message: 'Producto actualizado', severity: 'success' });
+      } else {
+        await createProducto(payload);
+        showToast({ message: 'Producto creado', severity: 'success' });
+      }
 
-      // La pantalla de lista apagará el overlay al montar
-      nav('/productos');
+      nav('/productos', { replace: true });
     } catch (err) {
       console.error('Error guardando producto:', err);
-      // Si no navegamos por error, apaga el overlay
-      stop();
+      showToast({ message: 'Error guardando producto', severity: 'error' });
+      stop(); // si no navegamos, apagar overlay
     }
   };
 
-  const handleCancel = () => {
-    // 🔻 Overlay mientras navega de vuelta
+  const handleCancel = async () => {
+    if (dirty) {
+      const ok = await confirm({
+        title: 'Descartar cambios',
+        content: 'Tienes cambios sin guardar. ¿Salir sin guardar?',
+        confirmText: 'Salir sin guardar',
+        cancelText: 'Seguir editando',
+        confirmColor: 'warning',
+      });
+      if (!ok) return;
+    }
     start();
     nav('/productos');
   };
 
   // Filtrar jerarquía
-  const padres = categorias.filter(c => c.parent_id == null);
-  const subcats = categorias.filter(c => String(c.parent_id) === padreSel);
+  const padres = categorias.filter((c) => c.parent_id == null);
+  const subcats = categorias.filter((c) => String(c.parent_id) === padreSel);
 
   return (
     <Container maxWidth="sm" sx={{ mt: 4 }}>
@@ -179,28 +210,75 @@ export default function ProductoForm() {
 
         <form onSubmit={handleSubmit}>
           <Stack spacing={2}>
-            <TextField label="Nombre" name="nombre" value={form.nombre} onChange={handleChange} required />
-            <TextField label="Descripción" name="descripcion" value={form.descripcion} onChange={handleChange} multiline rows={3} />
-            <TextField label="Precio Compra" name="precio_compra" type="number" value={form.precio_compra} onChange={handleChange} />
-            <TextField label="Precio Venta" name="precio_venta" type="number" value={form.precio_venta} onChange={handleChange} required />
-            <TextField label="Stock" name="stock" type="number" value={form.stock} onChange={handleChange} />
+            <TextField
+              label="Nombre"
+              name="nombre"
+              value={form.nombre}
+              onChange={handleChange}
+              required
+            />
 
             <TextField
-              label="Presentación/Tamaño (ej: 30 ml, 60 ml)"
+              label="Descripción"
+              name="descripcion"
+              value={form.descripcion}
+              onChange={handleChange}
+              multiline
+              rows={3}
+            />
+
+            {/* Informativos (no editables) */}
+            <TextField
+              label="Precio Compra (informativo)"
+              name="precio_compra"
+              type="number"
+              value={form.precio_compra}
+              InputProps={{ readOnly: true }}
+              helperText="Se actualiza automáticamente al registrar compras"
+            />
+            <TextField
+              label="Stock (informativo)"
+              name="stock"
+              type="number"
+              value={form.stock}
+              InputProps={{ readOnly: true }}
+              helperText="Se actualiza con compras/ventas"
+            />
+
+            <TextField
+              label="Precio Venta"
+              name="precio_venta"
+              type="number"
+              value={form.precio_venta}
+              onChange={handleChange}
+              required
+              inputProps={{ min: 0, step: '0.01' }}
+            />
+
+            <TextField
+              label="Presentación / Tamaño (ej: 30 ml, 60 ml)"
               name="presentacion"
               value={form.presentacion || ''}
               onChange={handleChange}
               required
             />
 
-            <FormControlLabel control={<Switch checked={form.activo} onChange={handleChange} name="activo" />} label="Activo" />
-
             <FormControl fullWidth>
               <InputLabel id="marca-label">Marca</InputLabel>
-              <Select labelId="marca-label" label="Marca" name="marca_id" value={form.marca_id} onChange={handleChange}>
-                <MenuItem value=""><em>— Selecciona una marca —</em></MenuItem>
-                {marcas.map(m => (
-                  <MenuItem key={m.id} value={String(m.id)}>{m.nombre}</MenuItem>
+              <Select
+                labelId="marca-label"
+                label="Marca"
+                name="marca_id"
+                value={form.marca_id}
+                onChange={handleChange}
+              >
+                <MenuItem value="">
+                  <em>— Selecciona una marca —</em>
+                </MenuItem>
+                {marcas.map((m) => (
+                  <MenuItem key={m.id} value={String(m.id)}>
+                    {m.nombre}
+                  </MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -211,12 +289,20 @@ export default function ProductoForm() {
                 labelId="padre-label"
                 label="Categoría"
                 value={padreSel}
-                onChange={e => { setPadreSel(e.target.value); setForm(f => ({ ...f, categoria_id: '' })); }}
+                onChange={(e) => {
+                  setPadreSel(e.target.value);
+                  setForm((f) => ({ ...f, categoria_id: '' }));
+                  setDirty(true);
+                }}
                 required
               >
-                <MenuItem value=""><em>— Elige una categoría —</em></MenuItem>
-                {padres.map(c => (
-                  <MenuItem key={c.id} value={String(c.id)}>{c.nombre}</MenuItem>
+                <MenuItem value="">
+                  <em>— Elige una categoría —</em>
+                </MenuItem>
+                {padres.map((c) => (
+                  <MenuItem key={c.id} value={String(c.id)}>
+                    {c.nombre}
+                  </MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -231,9 +317,13 @@ export default function ProductoForm() {
                 onChange={handleChange}
                 required
               >
-                <MenuItem value=""><em>— Elige una subcategoría —</em></MenuItem>
-                {subcats.map(c => (
-                  <MenuItem key={c.id} value={String(c.id)}>{c.nombre}</MenuItem>
+                <MenuItem value="">
+                  <em>— Elige una subcategoría —</em>
+                </MenuItem>
+                {subcats.map((c) => (
+                  <MenuItem key={c.id} value={String(c.id)}>
+                    {c.nombre}
+                  </MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -243,13 +333,22 @@ export default function ProductoForm() {
               <Typography variant="subtitle2">Imagen del producto</Typography>
               <input type="file" accept="image/*" onChange={handleFileChange} />
               {preview && (
-                <Box component="img" src={preview} alt="preview" sx={{ width: 120, mt: 1, borderRadius: 1 }} />
+                <Box
+                  component="img"
+                  src={preview}
+                  alt="preview"
+                  sx={{ width: 120, mt: 1, borderRadius: 1 }}
+                />
               )}
             </div>
 
             <Stack direction="row" spacing={2} justifyContent="flex-end">
-              <Button variant="outlined" onClick={handleCancel}>Cancelar</Button>
-              <Button type="submit" variant="contained">{id ? 'Actualizar' : 'Guardar'}</Button>
+              <Button variant="outlined" onClick={handleCancel}>
+                Cancelar
+              </Button>
+              <Button type="submit" variant="contained">
+                {id ? 'Actualizar' : 'Guardar'}
+              </Button>
             </Stack>
           </Stack>
         </form>
