@@ -20,15 +20,14 @@ import {
 } from '@mui/material';
 import { useParams, useNavigate } from 'react-router-dom';
 import { fetchOrdenCompra } from '../api/ordenes_compra';
-import { fetchProductos }   from '../api/productos';
-import { useLoading } from '../contexts/LoadingContext'; // 👈 overlay global
-
+import { useLoading } from '../contexts/LoadingContext';
+import { generarOrdenCompraPDF }  from '../utils/generarOrdenCompraPDF';
 export default function OrdenesCompraDetalle() {
   const { id } = useParams();
-  const nav   = useNavigate();
-  const { start, stop } = useLoading(); // 👈
+  const nav = useNavigate();
+  const { start, stop } = useLoading();
+
   const [orden, setOrden] = useState(null);
-  const [prodMap, setProdMap] = useState({});
   const [loading, setLoading] = useState(true);
 
   // Al entrar: apaga overlay global (la vista muestra su spinner local)
@@ -36,15 +35,9 @@ export default function OrdenesCompraDetalle() {
 
   useEffect(() => {
     const load = async () => {
+      setLoading(true);
       try {
-        // Cargar mapa de productos
-        const prodRes = await fetchProductos();
-        const prodArr = Array.isArray(prodRes?.data) ? prodRes.data : (prodRes ?? []);
-        const m = {};
-        prodArr.forEach(p => { m[p.id] = p.nombre; });
-        setProdMap(m);
-
-        // Cargar orden de compra
+        // Cargar orden de compra (ya enriquecida con producto { id, nombre, imagen_url })
         const ocRes = await fetchOrdenCompra(id);
         const oc = ocRes?.data ?? ocRes ?? null;
         setOrden(oc);
@@ -72,11 +65,12 @@ export default function OrdenesCompraDetalle() {
         <Typography variant="h6">Orden no encontrada</Typography>
         <Button
           variant="contained"
-          onClick={() => { start(); nav('/ordenes_compra'); }} // 👈 overlay al volver
+          onClick={() => { start(); nav('/ordenes_compra'); }}
           sx={{ mt: 2 }}
         >
           Volver
         </Button>
+        
       </Container>
     );
   }
@@ -93,6 +87,7 @@ export default function OrdenesCompraDetalle() {
         <Button variant="outlined" onClick={() => { start(); nav('/ordenes_compra'); }}>
           Volver
         </Button>
+        <Button onClick={() => generarOrdenCompraPDF(orden)}>Descargar PDF</Button>
       </Box>
       <Divider sx={{ mb: 3 }} />
 
@@ -118,11 +113,13 @@ export default function OrdenesCompraDetalle() {
       <Typography variant="h6" gutterBottom>
         Líneas de Detalle
       </Typography>
+
       <TableContainer component={Paper}>
         <Table size="small">
           <TableHead>
             <TableRow>
               <TableCell><strong>ID</strong></TableCell>
+              <TableCell><strong>Imagen</strong></TableCell>
               <TableCell><strong>Producto</strong></TableCell>
               <TableCell align="right"><strong>Cant.</strong></TableCell>
               <TableCell align="right"><strong>Precio U.</strong></TableCell>
@@ -132,11 +129,34 @@ export default function OrdenesCompraDetalle() {
               <TableCell align="right"><strong>Subtotal</strong></TableCell>
             </TableRow>
           </TableHead>
+
           <TableBody>
-            {(orden.lineas || []).map(ln => (
+            {(orden.lineas || []).map((ln) => (
               <TableRow key={ln.id}>
                 <TableCell>{ln.id}</TableCell>
-                <TableCell>{prodMap[ln.producto_id] || `ID ${ln.producto_id}`}</TableCell>
+
+                <TableCell width={80}>
+                  {ln.producto?.imagen_url ? (
+                    <Box
+                      component="img"
+                      src={ln.producto.imagen_url}
+                      alt={ln.producto.nombre || `Producto ${ln.producto?.id ?? ''}`}
+                      loading="lazy"
+                      sx={{
+                        width: 56,
+                        height: 56,
+                        objectFit: 'cover',
+                        borderRadius: 1,
+                        border: '1px solid',
+                        borderColor: 'divider'
+                      }}
+                    />
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">Sin imagen</Typography>
+                  )}
+                </TableCell>
+
+                <TableCell>{ln.producto?.nombre ?? `ID ${ln.producto?.id}`}</TableCell>
                 <TableCell align="right">{ln.cantidad}</TableCell>
                 <TableCell align="right">$ {Number(ln.precio_unitario).toFixed(2)}</TableCell>
                 <TableCell align="right">$ {Number(ln.impuesto).toFixed(2)}</TableCell>
@@ -145,9 +165,10 @@ export default function OrdenesCompraDetalle() {
                 <TableCell align="right">$ {Number(ln.subtotal).toFixed(2)}</TableCell>
               </TableRow>
             ))}
+
             {(orden.lineas || []).length === 0 && (
               <TableRow>
-                <TableCell colSpan={8} align="center">
+                <TableCell colSpan={9} align="center">
                   No hay líneas de detalle.
                 </TableCell>
               </TableRow>

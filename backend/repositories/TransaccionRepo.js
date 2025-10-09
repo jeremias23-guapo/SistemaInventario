@@ -21,30 +21,47 @@ class TransaccionRepo {
   }
 
   // Listar todas las transacciones con detalles
-  static async findAll() {
-  const [rows] = await pool.query(`
-    SELECT
-      ht.id_transaccion,
-      ht.id_producto,
-      p.nombre     AS producto_nombre,
-      ht.id_compra,
-      ht.id_venta,
-      COALESCE(oc.codigo, v.codigo) AS orden_codigo,
-      ht.tipo_transaccion,
-      ht.precio_transaccion,
-      ht.cantidad_transaccion,
-      ht.fecha_transaccion
-    FROM historial_transacciones ht
-    JOIN productos p
-      ON ht.id_producto = p.id
-    LEFT JOIN ordenes_compra oc
-      ON ht.id_compra = oc.id
-    LEFT JOIN ventas v
-      ON ht.id_venta = v.id
-    ORDER BY ht.fecha_transaccion DESC
-  `);
-  return rows;
-}
+  static async findPage({ limit, cursor }) {
+    // cursor viene como { fecha: '2025-09-30T18:23:55.000Z', id: 12345 } o null
+    let sql = `
+      SELECT
+        ht.id_transaccion,
+        ht.id_producto,
+        p.nombre     AS producto_nombre,
+        ht.id_compra,
+        ht.id_venta,
+        COALESCE(oc.codigo, v.codigo) AS orden_codigo,
+        ht.tipo_transaccion,
+        ht.precio_transaccion,
+        ht.cantidad_transaccion,
+        ht.fecha_transaccion
+      FROM historial_transacciones ht
+      JOIN productos p ON ht.id_producto = p.id
+      LEFT JOIN ordenes_compra oc ON ht.id_compra = oc.id
+      LEFT JOIN ventas v ON ht.id_venta = v.id
+    `;
+
+    const params = [];
+
+    if (cursor && cursor.fecha && cursor.id) {
+      // Seek: trae los < cursor en orden DESC
+      sql += `
+        WHERE
+          (ht.fecha_transaccion < ?)
+          OR (ht.fecha_transaccion = ? AND ht.id_transaccion < ?)
+      `;
+      params.push(new Date(cursor.fecha), new Date(cursor.fecha), Number(cursor.id));
+    }
+
+    sql += `
+      ORDER BY ht.fecha_transaccion DESC, ht.id_transaccion DESC
+      LIMIT ?
+    `;
+    params.push(Number(limit));
+
+    const [rows] = await pool.query(sql, params);
+    return rows;
+  }
 
 
   // Obtener transacción por ID

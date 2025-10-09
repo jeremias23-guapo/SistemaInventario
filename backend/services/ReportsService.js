@@ -14,6 +14,7 @@ function toCsv(rows, headers) {
   return `${head}\n${body}`;
 }
 
+/* ---- Ventas ---- */
 exports.salesReport = async ({ page=1, pageSize=50, from, to, estado='pagada', tz }) => {
   const offset = (page-1)*pageSize;
   const [rows, total] = await Promise.all([
@@ -29,6 +30,7 @@ exports.salesReportCsv = async ({ from, to, estado='pagada', tz }) => {
   return toCsv(rows, headers);
 };
 
+/* ---- KPIs / agrupados ---- */
 exports.kpis = (p) => Repo.findKpis(p);
 exports.salesByDay = (p) => Repo.findSalesByDay(p);
 exports.salesByProduct = (p) => Repo.findSalesByProduct(p);
@@ -53,18 +55,31 @@ exports.salesByUserCsv = async (p) => {
   return toCsv(rows, ['usuario_id','usuario','tickets','ingreso']);
 };
 
-exports.inventory = () => Repo.findInventory();
+/* ---- Inventario y bajo stock (paginado) ---- */
+exports.inventory = async ({ page=1, pageSize=50 } = {}) => {
+  const offset = (page-1)*pageSize;
+  const [rows, total] = await Promise.all([
+    Repo.findInventory({ limit: pageSize, offset }),
+    Repo.countInventory(),
+  ]);
+  return { rows, total, page, pageSize };
+};
+
 exports.inventoryCsv = async () => {
-  const rows = await Repo.findInventory();
+  const rows = await Repo.findInventory({ limit: 500000, offset: 0 });
   return toCsv(rows, ['id','nombre','stock','precio_venta','costo_promedio','valuacion']);
 };
-exports.lowStock = ({ threshold=2 }) => Repo.findLowStock({ threshold });
-exports.lowStockCsv = async ({ threshold=2 }) => {
-  const rows = await Repo.findLowStock({ threshold });
-  return toCsv(rows, ['id','nombre','stock']);
+
+exports.lowStock = async ({ threshold=2, page=1, pageSize=50 } = {}) => {
+  const offset = (page-1)*pageSize;
+  const [rows, total] = await Promise.all([
+    Repo.findLowStock({ threshold, limit: pageSize, offset }),
+    Repo.countLowStock({ threshold }),
+  ]);
+  return { rows, total, page, pageSize };
 };
-exports.movements = (p) => Repo.findMovements(p);
-exports.movementsCsv = async (p) => {
-  const rows = await Repo.findMovements(p);
-  return toCsv(rows, ['id_transaccion','id_producto','nombre','tipo_transaccion','fecha_transaccion','precio_transaccion','cantidad_transaccion']);
+
+exports.lowStockCsv = async ({ threshold=2 } = {}) => {
+  const rows = await Repo.findLowStock({ threshold, limit: 500000, offset: 0 });
+  return toCsv(rows, ['id','nombre','stock']);
 };

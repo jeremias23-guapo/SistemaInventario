@@ -1,6 +1,6 @@
 // src/pages/Transportistas.jsx
 import React, { useEffect, useMemo, useState } from 'react';
-import { Container, Paper, Stack, Button, TextField, Typography } from '@mui/material';
+import { Container, Paper, Stack, Button, TextField, Typography, TablePagination } from '@mui/material';
 import DataTable from '../components/DataTable';
 import { useLoading } from '../contexts/LoadingContext';
 import { useToast } from '../contexts/ToastContext';
@@ -27,30 +27,33 @@ export default function Transportistas() {
   const [openReglas, setOpenReglas] = useState(false);
   const [selected, setSelected] = useState(null);
 
+  // NUEVO: estados de paginación
+  const [page, setPage] = useState(0);          // 0-based para MUI
+  const [pageSize, setPageSize] = useState(10);
+  const [total, setTotal] = useState(0);
+
   const load = async () => {
     setLoading(true);
     try {
-      const data = await fetchTransportistas();
-      setRows(Array.isArray(data) ? data : []);
+      const data = await fetchTransportistas({ page: page + 1, pageSize, q });
+      setRows(Array.isArray(data?.items) ? data.items : []);
+      setTotal(data?.total || 0);
     } catch (err) {
       console.error('Error cargando transportistas', err);
       showToast({ message: 'Error cargando transportistas', severity: 'error' });
     } finally {
       setLoading(false);
-      stop(); // apaga overlay al terminar la carga inicial o recargas manuales
+      stop();
     }
   };
 
+  // Carga inicial y cuando cambian page/pageSize/q
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [page, pageSize, q]);
 
-  const filtered = useMemo(
-    () => rows.filter(r => r.nombre?.toLowerCase().includes(q.toLowerCase())),
-    [rows, q]
-  );
-
+  // Si quieres filtrar en servidor, elimina "filtered" y pasa rows directo al DataTable
   const columns = useMemo(() => [
     { Header: 'ID', accessor: 'id' },
     { Header: 'Nombre', accessor: 'nombre' },
@@ -67,14 +70,11 @@ export default function Transportistas() {
             size="small"
             label="Buscar por nombre"
             value={q}
-            onChange={e => setQ(e.target.value)}
+            onChange={e => { setPage(0); setQ(e.target.value); }} // reinicia a primera página
           />
           <Button
             variant="contained"
-            onClick={() => {
-              setEditing(null);
-              setOpenForm(true);
-            }}
+            onClick={() => { setEditing(null); setOpenForm(true); }}
           >
             Nuevo Transportista
           </Button>
@@ -83,7 +83,7 @@ export default function Transportistas() {
 
       <Paper>
         <DataTable
-          rows={filtered}
+          rows={rows}
           columns={columns}
           loading={loading}
           onView={row => { setSelected(row); setOpenReglas(true); }}
@@ -109,8 +109,19 @@ export default function Transportistas() {
               stop();
             }
           }}
-          // Mapea "Ver" como "Reglas"
           viewLabel="Reglas"
+        />
+
+        {/* Paginación MUI (0-based) */}
+        <TablePagination
+          component="div"
+          count={total}
+          page={page}
+          onPageChange={(_, newPage) => setPage(newPage)}
+          rowsPerPage={pageSize}
+          onRowsPerPageChange={e => { setPageSize(parseInt(e.target.value, 10)); setPage(0); }}
+          rowsPerPageOptions={[5, 10, 25, 50, 100]}
+          labelRowsPerPage="Filas por página"
         />
       </Paper>
 
@@ -119,7 +130,6 @@ export default function Transportistas() {
         initial={editing}
         onClose={() => setOpenForm(false)}
         onSave={async (payload) => {
-          // Confirmar solo si es edición
           if (editing) {
             const ok = await confirm({
               title: 'Actualizar transportista',
@@ -141,6 +151,7 @@ export default function Transportistas() {
               showToast({ message: 'Transportista creado', severity: 'success' });
             }
             setOpenForm(false);
+            // recarga y deja al usuario en la página actual (o reinicia a la 1 si prefieres)
             await load();
           } catch (err) {
             console.error('Error guardando transportista', err);

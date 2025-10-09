@@ -10,6 +10,9 @@ export const fetchCategoriasPadre   = ()    => API.get('/padres');
 
 // Solo padres (nuevo: búsqueda + paginado) -> para Autocomplete
 export const searchCategoriasPadre  = (params) => API.get('/padres', { params });
+// Subcategorías de un padre, paginadas con búsqueda
+export const searchSubcategorias = (parentId, params) =>
+  API.get(`/${parentId}/subcategorias`, { params });
 
 export const fetchSubcategorias     = (categoriaId) => API.get(`/${categoriaId}/subcategorias`);
 export const fetchCategoria         = (id)  => API.get(`/${id}`);

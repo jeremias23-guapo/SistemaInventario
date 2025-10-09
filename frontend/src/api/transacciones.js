@@ -5,6 +5,12 @@ const API = axios.create({
   baseURL: 'http://localhost:3001/api/transacciones'
 });
 
+export const fetchHistorialPage = async ({ limit = 50, cursor = null } = {}) => {
+  const params = { limit };
+  if (cursor) params.cursor = cursor;
+  const res = await API.get('/', { params });
+  return res.data; // { items, nextCursor, hasMore }
+};
 // Lista todo el historial
 export const fetchHistorial    = ()      => API.get('/').then(res => res.data);
 

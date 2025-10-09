@@ -1,44 +1,38 @@
 // frontend/src/pages/Transacciones.jsx
-import React, { useEffect, useState } from 'react';
-import { Container, Typography, Paper, Stack } from '@mui/material';
+import React, { useEffect, useState, useCallback } from 'react';
+import { Container, Typography, Paper, Stack, Button } from '@mui/material';
 import DataTable from '../components/DataTable';
-import { fetchHistorial } from '../api/transacciones';
-import { useNavigate } from 'react-router-dom';
-import { useLoading } from '../contexts/LoadingContext'; // 👈 overlay global
+import { fetchHistorialPage } from '../api/transacciones';
+import { useLoading } from '../contexts/LoadingContext';
 import DateField from '../components/DateField';
-export default function Transacciones() {
-  const [txs, setTxs] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const nav = useNavigate();
-  const { stop } = useLoading(); // no navegamos desde acá, solo apagamos overlay al montar
 
-  // Cargar historial al montar
-  const load = async () => {
+export default function Transacciones() {
+  const [rows, setRows] = useState([]);
+  const [nextCursor, setNextCursor] = useState(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const { stop } = useLoading();
+
+  const loadPage = useCallback(async (cursor = null) => {
     setLoading(true);
     try {
-      const res = await fetchHistorial();
-      const data = Array.isArray(res?.data) ? res.data : (Array.isArray(res) ? res : []);
-      setTxs(data);
+      const { items, nextCursor: nc, hasMore: hm } = await fetchHistorialPage({ limit: 50, cursor });
+      setRows(prev => (cursor ? [...prev, ...items] : items));
+      setNextCursor(nc || null);
+      setHasMore(Boolean(hm));
     } catch (err) {
       console.error('Error cargando historial', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     (async () => {
-      try {
-        await load();
-      } finally {
-        // Apagar overlay global al terminar la carga inicial
-        stop();
-      }
+      try { await loadPage(null); } finally { stop(); }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadPage, stop]);
 
-  // Columnas de solo lectura
   const columns = [
     { Header: 'ID TX',        accessor: 'id_transaccion' },
     { Header: 'Producto',     accessor: 'producto_nombre' },
@@ -46,25 +40,28 @@ export default function Transacciones() {
     { Header: 'Tipo',         accessor: 'tipo_transaccion' },
     { Header: 'Precio',       accessor: 'precio_transaccion' },
     { Header: 'Cantidad',     accessor: 'cantidad_transaccion' },
-   {
-    Header: 'Fecha',
-    accessor: row => <DateField value={row.fecha_transaccion} />
-  }
-    
+    {
+      Header: 'Fecha',
+      accessor: row => <DateField value={row.fecha_transaccion} />
+    }
   ];
 
   return (
     <Container sx={{ mt: 4 }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
         <Typography variant="h5">Historial de Transacciones</Typography>
-        {/* Sin botón de “Nueva Transacción” */}
       </Stack>
       <Paper>
-        <DataTable
-          rows={txs}
-          columns={columns}
-          loading={loading}
-        />
+        <DataTable rows={rows} columns={columns} loading={loading} />
+        <Stack direction="row" justifyContent="center" p={2}>
+          <Button
+            variant="contained"
+            disabled={loading || !hasMore}
+            onClick={() => loadPage(nextCursor)}
+          >
+            {hasMore ? (loading ? 'Cargando…' : 'Cargar más') : 'No hay más'}
+          </Button>
+        </Stack>
       </Paper>
     </Container>
   );

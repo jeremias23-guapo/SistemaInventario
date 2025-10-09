@@ -1,6 +1,7 @@
+// routes/marcas.js
 const express = require('express');
 const router  = express.Router();
-const ctrl    = require('../controllers/MarcaController.js');
+const ctrl    = require('../controllers/MarcaController');
 
 router.get('/',    ctrl.getMarcas);
 router.get('/:id', ctrl.getMarca);
@@ -9,4 +10,3 @@ router.put('/:id', ctrl.updateMarca);
 router.delete('/:id', ctrl.deleteMarca);
 
 module.exports = router;
-

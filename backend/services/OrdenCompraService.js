@@ -116,8 +116,22 @@ class OrdenCompraService {
   static async getById(id) {
     const cab = await OrdenCompraRepo.fetchCabecera(pool, id);
     if (!cab) throw new Error('Orden no encontrada');
-    const detalle = await OrdenCompraRepo.fetchDetalle(pool, id);
-    return { ...cab, lineas: detalle };
+     const detalle = await OrdenCompraRepo.fetchDetalle(pool, id);
+  const lineas = detalle.map(r => ({
+   id: r.id,
+   producto: {      id: r.producto_id,
+     nombre: r.producto_nombre,
+     imagen_url: r.producto_imagen_url
+   },
+   cantidad: r.cantidad,
+  cantidad_restante: r.cantidad_restante,
+    precio_unitario: r.precio_unitario,
+    impuesto: r.impuesto,
+    libraje: r.libraje,
+    descuento: r.descuento,
+    subtotal: r.subtotal
+  }));
+  return { ...cab, lineas };
   }
 
   static async update(id, data) {

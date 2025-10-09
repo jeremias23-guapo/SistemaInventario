@@ -2,24 +2,20 @@
 const ProveedorRepo = require('../repositories/ProveedorRepo');
 
 class ProveedorService {
-  static getAll() {
-    return ProveedorRepo.findAll();
+  static getAll(params) {
+    return ProveedorRepo.findPage(params);
   }
-
   static getOne(id) {
     return ProveedorRepo.findById(id);
   }
-
   static create(data) {
     return ProveedorRepo.create(data);
   }
-
   static update(id, data) {
     return ProveedorRepo.update(id, data);
   }
-
-  static delete(id) {
-    return ProveedorRepo.delete(id);
+  static remove(id) {
+    return ProveedorRepo.remove(id);
   }
 }
 

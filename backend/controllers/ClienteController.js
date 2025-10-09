@@ -3,8 +3,17 @@ const ClienteService = require('../services/ClienteService');
 
 exports.listAll = async (req, res, next) => {
   try {
-    const clientes = await ClienteService.listAll();
-    res.json(clientes);
+    const page  = parseInt(req.query.page)  || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    const clientes = await ClienteService.listAll({ limit, offset });
+    res.json({
+      data: clientes.data,
+      total: clientes.total,
+      page,
+      pages: Math.ceil(clientes.total / limit)
+    });
   } catch (err) {
     next(err);
   }
@@ -41,6 +50,19 @@ exports.remove = async (req, res, next) => {
   try {
     await ClienteService.delete(req.params.id);
     res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+};
+
+// GET /api/clientes/search?q=texto&page=1&limit=10
+exports.searchLight = async (req, res, next) => {
+  try {
+    const q     = String(req.query.q ?? '');
+    const page  = parseInt(req.query.page)  || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const { items, total, hasMore } = await ClienteService.searchLight({ q, page, limit });
+    res.json({ items, total, hasMore, page, limit });
   } catch (err) {
     next(err);
   }

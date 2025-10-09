@@ -140,6 +140,246 @@ class VentaService {
     const lineas = await VentaRepo.fetchLineas(id);
     return { ...cab, lineas };
   }
+static async update(id, data) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    // 0) Traer cabecera + detalle actual
+    const oldCab = await VentaRepo.fetchCabecera(id);
+    if (!oldCab) {
+      const e = new Error('Venta no encontrada');
+      e.statusCode = 404;
+      throw e;
+    }
+    const oldLineas = await VentaRepo.fetchLineas(id);
+
+    // --- Estados correctos (basados en columnas reales) ---
+    const estabaPagada = String(oldCab.estado_pago || '').toLowerCase() === 'pagada';
+
+    // Normalizamos entradas nuevas
+    const nuevasLineasEntrada = Array.isArray(data.lineas) ? data.lineas : [];
+    const nuevoMetodoPago      = data.metodo_pago      ?? oldCab.metodo_pago      ?? 'transferencia';
+    const nuevoEstadoEnvio     = data.estado_envio     ?? oldCab.estado_envio     ?? 'pendiente_envio';
+    const nuevoEstadoPago      = data.estado_pago      ?? oldCab.estado_pago      ?? 'pendiente_pago';
+    const nuevoEstadoVenta     = data.estado_venta     ?? oldCab.estado_venta     ?? 'activa';
+    const nuevoTransportistaId = data.transportista_id ?? oldCab.transportista_id ?? null;
+
+    const nuevaPagada = String(nuevoEstadoPago).toLowerCase() === 'pagada';
+
+    // 1) Determinar productos a bloquear (viejos + nuevos)
+    const productosLock = [
+      ...new Set([
+        ...oldLineas.map(l => l.producto_id),
+        ...nuevasLineasEntrada.map(l => l.producto_id),
+      ])
+    ];
+    if (productosLock.length) {
+      await conn.query(
+        `SELECT id FROM detalle_compra WHERE producto_id IN (?) FOR UPDATE`,
+        [productosLock]
+      );
+    }
+
+    // 2) Revertir lotes e inventario de la venta anterior
+    // 2a) Reversión por origen_lote_id si existe
+    const [rowsDV] = await conn.query(
+      `SELECT producto_id, origen_lote_id, cantidad
+         FROM detalle_venta
+        WHERE venta_id = ?`,
+      [id]
+    );
+
+    if (rowsDV.length) {
+      for (const dv of rowsDV) {
+        if (dv.origen_lote_id) {
+          await conn.query(
+            `UPDATE detalle_compra
+                SET cantidad_restante = cantidad_restante + ?
+              WHERE id = ?`,
+            [dv.cantidad, dv.origen_lote_id]
+          );
+        }
+      }
+    } else if (oldLineas.length) {
+      // Fallback FIFO inverso si no hay origen_lote_id
+      for (const ln of oldLineas) {
+        let qty = ln.cantidad;
+        while (qty > 0) {
+          const [rows] = await conn.query(
+            `SELECT id, cantidad_restante, cantidad AS orig
+               FROM detalle_compra
+              WHERE producto_id = ? AND cantidad_restante < cantidad
+              ORDER BY orden_compra_id DESC, id DESC
+              LIMIT 1`,
+            [ln.producto_id]
+          );
+          if (!rows.length) break;
+          const lote = rows[0];
+          const espacioConsumido = lote.orig - lote.cantidad_restante;
+          const devolver = Math.min(espacioConsumido, qty);
+          await conn.query(
+            `UPDATE detalle_compra
+                SET cantidad_restante = cantidad_restante + ?
+              WHERE id = ?`,
+            [devolver, lote.id]
+          );
+          qty -= devolver;
+        }
+      }
+    }
+
+    // 2b) Devolver stock global solo si la venta anterior estaba pagada
+    if (estabaPagada) {
+      for (const ln of oldLineas) {
+        await ProductoRepo.adjustStock(conn, ln.producto_id, ln.cantidad);
+      }
+    }
+
+    // 3) Limpiar detalle e historial anteriores
+    await VentaRepo.deleteHistorial(conn, id);
+    await VentaRepo.deleteDetalle(conn, id);
+
+    // 4) Calcular nuevas líneas y total
+    let totalVenta = 0;
+    const nuevasLineas = nuevasLineasEntrada.map(ln => {
+      const cantidad = +ln.cantidad || 0;
+      const pu       = +ln.precio_unitario || 0;
+      const desc     = +ln.descuento || 0;  // si tu modelo aplica descuento por línea
+      const subtotal = cantidad * pu - desc;
+      totalVenta    += subtotal;
+      return {
+        producto_id: ln.producto_id,
+        cantidad,
+        pu,
+        descuento: desc,
+        subtotal
+      };
+    });
+    totalVenta = +Number(totalVenta).toFixed(2);
+
+    // 4.b) Recalcular comisión del transportista con los valores NUEVOS
+    const comision = await calcularCostoEnvioProveedor({
+      transportista_id: nuevoTransportistaId,
+      metodo_pago: nuevoMetodoPago,
+      total_venta: totalVenta
+    });
+    const comisionRedondeada = +Number(comision || 0).toFixed(2);
+
+    // 5) Actualizar cabecera de la venta (incluye transportista y comisión)
+    await conn.query(
+      `UPDATE ventas
+          SET codigo                 = ?,
+              cliente_id             = ?,
+              metodo_pago            = ?,
+              estado_envio           = ?,
+              estado_pago            = ?,
+              estado_venta           = ?,
+              total_venta            = ?,
+              transportista_id       = ?,
+              comision_transportista = ?
+        WHERE id = ?`,
+      [
+        data.codigo ?? oldCab.codigo,
+        data.cliente_id ?? oldCab.cliente_id,
+        nuevoMetodoPago,
+        nuevoEstadoEnvio,
+        nuevoEstadoPago,
+        nuevoEstadoVenta,
+        totalVenta,
+        nuevoTransportistaId,
+        comisionRedondeada,
+        id
+      ]
+    );
+
+    // 6) Insertar nuevo detalle por lotes (FIFO), historial y ajustar stock si nueva venta queda pagada
+    for (const ln of nuevasLineas) {
+      let qtyPend = ln.cantidad;
+
+      while (qtyPend > 0) {
+        const [rows] = await conn.query(
+          `SELECT id, cantidad_restante, precio_unitario AS costo_lote
+             FROM detalle_compra
+            WHERE producto_id = ? AND cantidad_restante > 0
+            ORDER BY orden_compra_id, id
+            LIMIT 1`,
+          [ln.producto_id]
+        );
+
+        if (!rows.length) {
+          throw new Error(`Sin stock para producto ${ln.producto_id}`);
+        }
+
+        const lote = rows[0];
+        const take = Math.min(lote.cantidad_restante, qtyPend);
+
+        // Consumir del lote
+        await conn.query(
+          `UPDATE detalle_compra
+              SET cantidad_restante = cantidad_restante - ?
+            WHERE id = ?`,
+          [take, lote.id]
+        );
+
+        // Guardar línea por lote (con origen_lote_id)
+        const subtotalParcial = take * ln.pu - 0; // prorratea descuento si lo usas
+        await VentaRepo.insertDetalle(conn, {
+          venta_id:        id,
+          producto_id:     ln.producto_id,
+          cantidad:        take,
+          precio_unitario: ln.pu,
+          descuento:       0, // prorratear si usas descuentos por-línea
+          subtotal:        subtotalParcial,
+          costo_unitario:  lote.costo_lote,
+          origen_lote_id:  lote.id
+        });
+
+        // Historial
+        await VentaRepo.insertHistorial(conn, {
+          id_producto:          ln.producto_id,
+          id_venta:             id,
+          tipo_transaccion:     'venta',
+          precio_transaccion:   subtotalParcial,
+          cantidad_transaccion: take
+        });
+
+        // Ajustar inventario si la nueva venta queda pagada
+        if (nuevaPagada) {
+          await ProductoRepo.adjustStock(conn, ln.producto_id, -take);
+        }
+
+        qtyPend -= take;
+      }
+    }
+
+    // 7) Intentar finalizar automáticamente si corresponde
+    await finalizeIfCompleted(conn, id);
+
+    await conn.commit();
+    conn.release();
+
+    return {
+      id,
+      codigo: data.codigo ?? oldCab.codigo,
+      cliente_id: data.cliente_id ?? oldCab.cliente_id,
+      metodo_pago: nuevoMetodoPago,
+      estado_envio: nuevoEstadoEnvio,
+      estado_pago: nuevoEstadoPago,
+      estado_venta: nuevoEstadoVenta,
+      total_venta: totalVenta,
+      transportista_id: nuevoTransportistaId,
+      comision_transportista: comisionRedondeada
+    };
+
+  } catch (err) {
+    try { await conn.rollback(); } catch {}
+    try { conn.release(); } catch {}
+    throw err;
+  }
+}
+
+
 
   static async delete(id) {
     // (sin cambios)
@@ -253,10 +493,10 @@ class VentaService {
     }
   }
 
-  static async search(filters) {
-    const { codigo, fecha, page = 1, limit = 10 } = filters || {};
-    return VentaRepo.search({ codigo, fecha, page, limit });
-  }
+ static async search(filters) {
+  const { codigo, fecha, estado_envio, page = 1, limit = 10 } = filters || {};
+  return VentaRepo.search({ codigo, fecha, estado_envio, page, limit }); // <-- pasa estado_envio
+}
 }
 
 module.exports = VentaService;

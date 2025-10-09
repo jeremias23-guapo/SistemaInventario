@@ -33,9 +33,16 @@ API.interceptors.response.use(
 );
 
 // === Transportistas CRUD ===
-export const fetchTransportistas = () =>
-  API.get('/').then(res => res.data);
 
+// Paginado + búsqueda (server-side)
+export const fetchTransportistas = ({ page = 1, pageSize = 10, q = '' } = {}) =>
+  API.get('/', { params: { page, pageSize, q } }).then(res => res.data);
+
+// Alias "light" para usar directo en autocompletados
+export const searchTransportistasLight = ({ q = '', page = 1, pageSize = 5 } = {}) =>
+  fetchTransportistas({ q, page, pageSize });
+
+// Detalle para precargar labels en formularios de edición
 export const fetchTransportista = (id) =>
   API.get(`/${id}`).then(res => res.data);
 

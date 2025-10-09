@@ -2,8 +2,11 @@ const TransaccionService = require('../services/TransaccionService');
 
 exports.getAll = async (req, res, next) => {
   try {
-    const txs = await TransaccionService.listAll();
-    res.json(txs);
+    const limit  = Math.min(Math.max(parseInt(req.query.limit || '50', 10), 1), 200);
+    const cursor = req.query.cursor || null;
+
+    const page = await TransaccionService.listPage({ limit, cursor });
+    res.json(page);
   } catch (err) {
     next(err);
   }
@@ -17,7 +20,6 @@ exports.getOne = async (req, res, next) => {
     next(err);
   }
 };
-
 exports.create = async (req, res, next) => {
   try {
     const newTx = await TransaccionService.create(req.body);

@@ -3,20 +3,21 @@ const pool = require('../config/db');
 
 class ClienteRepo {
   // 1.a) Listar todos los clientes
-  static async findAll() {
-    const [rows] = await pool.query(`
-      SELECT 
-        id,
-        nombre,
-        contacto,
-        email,
-        direccion,
-        created_at,
-        modified_at
-      FROM clientes
-      ORDER BY nombre
-    `);
-    return rows;
+  static async findAll({ limit = 10, offset = 0 }) {
+    const [rows] = await pool.query(
+      `SELECT id, nombre, contacto, email, direccion, created_at, modified_at
+       FROM clientes
+       ORDER BY nombre
+       LIMIT ? OFFSET ?`,
+      [limit, offset]
+    );
+
+    // también contar total para frontend
+    const [[{ total }]] = await pool.query(
+      'SELECT COUNT(*) as total FROM clientes'
+    );
+
+    return { data: rows, total };
   }
 
   // 1.b) Obtener un cliente por ID
@@ -74,6 +75,41 @@ class ClienteRepo {
   // 1.e) Eliminar un cliente
   static async delete(id) {
     await pool.query('DELETE FROM clientes WHERE id = ?', [id]);
+  }
+
+  // 1.f) Búsqueda ligera paginada (para autocompletar)
+  static async searchLight({ q = '', page = 1, limit = 10 }) {
+    const pageNum = Math.max(1, Number(page) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(limit) || 10));
+    const offset = (pageNum - 1) * pageSize;
+
+    const hasQuery = (q ?? '').trim().length > 0;
+    const like = `%${(q || '').toLowerCase()}%`;
+
+    // TOTAL
+    const [countRows] = await pool.query(
+      hasQuery
+        ? 'SELECT COUNT(*) AS total FROM clientes WHERE LOWER(nombre) LIKE ?'
+        : 'SELECT COUNT(*) AS total FROM clientes',
+      hasQuery ? [like] : []
+    );
+    const total = Number(countRows?.[0]?.total ?? 0);
+
+    // ITEMS (solo los campos necesarios para el autocomplete)
+    const [rows] = await pool.query(
+      `
+        SELECT id, nombre
+        FROM clientes
+        ${hasQuery ? 'WHERE LOWER(nombre) LIKE ?' : ''}
+        ORDER BY nombre ASC, id ASC
+        LIMIT ? OFFSET ?
+      `,
+      hasQuery ? [like, pageSize, offset] : [pageSize, offset]
+    );
+
+    const items = Array.isArray(rows) ? rows : (rows ? [rows] : []);
+    const hasMore = pageNum * pageSize < total;
+    return { items, total, hasMore };
   }
 }
 

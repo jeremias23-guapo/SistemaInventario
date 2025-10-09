@@ -1,5 +1,4 @@
-//mostrar el overlay de carga
-
+// components/LoaderOverlay.jsx
 import { useLoading } from "../contexts/LoadingContext";
 
 export default function LoaderOverlay() {
@@ -7,12 +6,19 @@ export default function LoaderOverlay() {
   if (!active) return null;
 
   return (
-    <div style={styles.backdrop}>
-      <div style={styles.box}>
-        <div style={styles.spinner} />
-        <div>Cargando...</div>
+    <>
+      {/* keyframes para el spinner */}
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+      `}</style>
+
+      <div style={styles.backdrop}>
+        <div style={styles.box}>
+          <div style={styles.spinner} />
+          <div>Cargando...</div>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 

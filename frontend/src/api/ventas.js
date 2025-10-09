@@ -49,10 +49,11 @@ export const createVenta = (data) => API.post('/', data).then(res => res.data);
 export const updateVenta = (id, data) => API.put(`/${id}`, data).then(res => res.data);
 export const deleteVenta = (id) => API.delete(`/${id}`);
 
-export const searchVentas = ({ codigo, fecha, page = 1, limit = 10 }) => {
+export const searchVentas = ({ codigo, fecha, estado_envio, page = 1, limit = 10 }) => {
   const params = new URLSearchParams();
   if (codigo) params.append('codigo', codigo);
   if (fecha) params.append('fecha', fecha);
+  if (estado_envio) params.append('estado_envio', estado_envio); // <-- NUEVO
   if (page)  params.append('page', page);
   if (limit) params.append('limit', limit);
   return API.get(`/search?${params.toString()}`).then(res => res.data);

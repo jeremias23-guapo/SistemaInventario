@@ -1,13 +1,14 @@
 // frontend/src/pages/VentaDetail.jsx
 import React, { useEffect, useState } from 'react';
 import {
-  Container, Paper, Typography, Grid, Table, TableBody, TableCell,
+  Container, Paper, Typography, Grid, Table, TableBody, TableCell, Stack,
   TableContainer, TableHead, TableRow, CircularProgress, Button
 } from '@mui/material';
 import { useParams, useNavigate } from 'react-router-dom';
 import { fetchVenta } from '../api/ventas';
 import { fetchProductos } from '../api/productos';
 import { useLoading } from '../contexts/LoadingContext';
+import { generarVentaPDF } from '../utils/pdfHelpers'; // ⬅️ usamos el helper
 
 export default function VentaDetail() {
   const { id } = useParams();
@@ -29,7 +30,7 @@ export default function VentaDetail() {
         const map = {};
         arr.forEach(p => { map[p.id] = p.nombre; });
         setProductosMap(map);
-      } catch (err) { /* noop */ }
+      } catch { /* noop */ }
     })();
   }, []);
 
@@ -41,12 +42,19 @@ export default function VentaDetail() {
         const data = r?.data ?? r ?? null;
         setVenta(data);
       } catch (err) {
-        setError(err.response?.data?.error || err.message);
+        setError(err?.response?.data?.error || err?.message);
       } finally {
         setLoading(false);
       }
     })();
   }, [id]);
+
+  const formatoFecha = (fechaStr) => new Date(fechaStr).toLocaleString();
+
+  const handleDownloadPdf = () => {
+    if (!venta) return;
+    generarVentaPDF(venta, productosMap); // ⬅️ delegamos al helper
+  };
 
   if (loading) {
     return (<Container sx={{ mt: 4, textAlign: 'center' }}><CircularProgress /></Container>);
@@ -72,13 +80,14 @@ export default function VentaDetail() {
     );
   }
 
-  const formatoFecha = fechaStr => new Date(fechaStr).toLocaleString();
-
   return (
     <Container sx={{ mt: 4 }}>
-      <Button onClick={() => { start(); nav('/ventas'); }} variant="outlined" sx={{ mb: 2 }}>
-        ← Volver a Lista de Ventas
-      </Button>
+      <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+        <Button onClick={() => { start(); nav('/ventas'); }} variant="outlined">
+          ← Volver a Lista de Ventas
+        </Button>
+        <Button onClick={handleDownloadPdf} variant="contained">Descargar PDF</Button>
+      </Stack>
 
       <Paper sx={{ p: 3, mb: 4 }}>
         <Typography variant="h5" gutterBottom>Detalle de Venta #{venta.id}</Typography>
@@ -115,10 +124,9 @@ export default function VentaDetail() {
 
           <Grid item xs={12} sm={6} md={3}>
             <Typography variant="subtitle2">Total bruto:</Typography>
-  <Typography>$ {Number(venta.total_venta).toFixed(2)}</Typography>
+            <Typography>$ {Number(venta.total_venta).toFixed(2)}</Typography>
           </Grid>
 
-          {/* Nuevos campos */}
           <Grid item xs={12} sm={6} md={3}>
             <Typography variant="subtitle2">Transportista:</Typography>
             <Typography>{venta.transportista_nombre || '—'}</Typography>
@@ -127,11 +135,12 @@ export default function VentaDetail() {
             <Typography variant="subtitle2">Comisión transportista:</Typography>
             <Typography>$ {Number(venta.transportista_comision || 0).toFixed(2)}</Typography>
           </Grid>
+
+          <Grid item xs={12} sm={6} md={3}>
+            <Typography variant="subtitle2">Total neto:</Typography>
+            <Typography>$ {Number(venta.total_venta_neta).toFixed(2)}</Typography>
+          </Grid>
         </Grid>
-         <Grid item xs={12} sm={6} md={3}>
-   <Typography variant="subtitle2">Total neto:</Typography>
-   <Typography>$ {Number(venta.total_venta_neta).toFixed(2)}</Typography>
- </Grid>
       </Paper>
 
       <Paper>
@@ -155,8 +164,11 @@ export default function VentaDetail() {
                   <TableCell>{ln.detalle_id}</TableCell>
                   <TableCell>
                     {ln.imagen_url && (
-                      <img src={ln.imagen_url} alt={ln.producto_nombre || `ID ${ln.producto_id}`}
-                           style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4 }} />
+                      <img
+                        src={ln.imagen_url}
+                        alt={ln.producto_nombre || `ID ${ln.producto_id}`}
+                        style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4 }}
+                      />
                     )}
                   </TableCell>
                   <TableCell>{ln.producto_nombre || productosMap[ln.producto_id] || `ID ${ln.producto_id}`}</TableCell>
@@ -167,7 +179,9 @@ export default function VentaDetail() {
                 </TableRow>
               ))}
               {(!venta.lineas || venta.lineas.length === 0) && (
-                <TableRow><TableCell colSpan={7} align="center">No hay líneas de detalle.</TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={7} align="center">No hay líneas de detalle.</TableCell>
+                </TableRow>
               )}
             </TableBody>
           </Table>

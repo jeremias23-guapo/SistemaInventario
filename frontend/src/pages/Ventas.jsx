@@ -1,14 +1,8 @@
-// frontend/src/pages/Ventas.jsx
+// src/pages/Ventas.jsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Container,
-  Button,
-  Stack,
-  Typography,
-  Paper,
-  TextField,
-  TablePagination,   // <-- agregado
+  Container, Button, Stack, Typography, Paper, TextField, TablePagination, MenuItem
 } from '@mui/material';
 import DataTable from '../components/DataTable';
 import DateField from '../components/DateField';
@@ -27,24 +21,30 @@ const getIsAdmin = () => {
 const isLocked = (row) =>
   ['cancelada', 'finalizada'].includes((row?.estado_venta || '').toLowerCase());
 
+const ESTADOS_ENVIO = [
+  { value: '', label: 'Todos' },
+  { value: 'pendiente_envio', label: 'Pendiente de envío' },
+  { value: 'enviado', label: 'Enviado' },
+  { value: 'recibido', label: 'Recibido' },
+];
+
 export default function Ventas() {
   const [ventas, setVentas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [codigo, setCodigo] = useState('');
   const [fecha, setFecha] = useState('');
+  const [estadoEnvio, setEstadoEnvio] = useState('');
 
-  // --- NUEVO: estado de paginación
-  const [page, setPage] = useState(1);      // 1-based
+  const [page, setPage] = useState(1);  // 1-based
   const [limit, setLimit] = useState(10);
   const [total, setTotal] = useState(0);
 
-  const nav = useNavigate();
+  const nav = useNavigate(); // ✅ usar esta instancia en callbacks
   const isAdmin = getIsAdmin();
   const { start, stop } = useLoading();
   const stoppedOnceRef = useRef(false);
 
   const formatVentas = (resp) => {
-    // Compat: backend nuevo devuelve { data, pagination }; antiguo: array
     if (Array.isArray(resp)) {
       setTotal(resp.length);
       return resp;
@@ -53,7 +53,6 @@ export default function Ventas() {
     const pg = resp?.pagination;
     if (pg) {
       setTotal(Number(pg.total || 0));
-      // solo actualizamos si vienen definidos (para no pisar estado cuando viene de compat)
       if (pg.page)  setPage(pg.page);
       if (pg.limit) setLimit(pg.limit);
     }
@@ -67,21 +66,17 @@ export default function Ventas() {
       setVentas(formatVentas(data));
     } catch (err) {
       console.error('Error cargando ventas', err);
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
-  const handleSearch = async ({ codigo, fecha, opts = {} }) => {
+  const handleSearch = async ({ codigo, fecha, estado_envio, opts = {} }) => {
     setLoading(true);
     try {
-      const data = await searchVentas({ codigo, fecha, page, limit, ...(opts || {}) });
+      const data = await searchVentas({ codigo, fecha, estado_envio, page, limit, ...(opts || {}) });
       setVentas(formatVentas(data));
     } catch (err) {
       console.error('Error buscando ventas', err);
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   useEffect(() => {
@@ -94,31 +89,29 @@ export default function Ventas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Rebuscar al cambiar filtros con pequeño debounce
   useEffect(() => {
     const id = setTimeout(() => {
-      if (codigo || fecha) {
-        // al cambiar filtro, resetea a primera página
-        setPage(1);
-        handleSearch({ codigo, fecha, opts: { page: 1 } });
+      const hasFilters = codigo || fecha || estadoEnvio;
+      setPage(1);
+      if (hasFilters) {
+        handleSearch({ codigo, fecha, estado_envio: estadoEnvio, opts: { page: 1 } });
       } else {
-        setPage(1);
         loadVentas({ page: 1 });
       }
     }, 300);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [codigo, fecha]);
+  }, [codigo, fecha, estadoEnvio]);
 
-  // Rebuscar al cambiar page/limit (sin tocar filtros)
   useEffect(() => {
-    if (codigo || fecha) handleSearch({ codigo, fecha });
+    const hasFilters = codigo || fecha || estadoEnvio;
+    if (hasFilters) handleSearch({ codigo, fecha, estado_envio: estadoEnvio });
     else loadVentas();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, limit]);
 
   const onClear = async () => {
-    setCodigo(''); setFecha('');
+    setCodigo(''); setFecha(''); setEstadoEnvio('');
     setPage(1);
     await loadVentas({ page: 1 });
   };
@@ -150,8 +143,19 @@ export default function Ventas() {
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
           <TextField label="Código" variant="outlined" size="small" value={codigo} onChange={e => setCodigo(e.target.value)} disabled={loading} />
           <TextField label="Fecha" type="date" variant="outlined" size="small" InputLabelProps={{ shrink: true }} value={fecha} onChange={e => setFecha(e.target.value)} disabled={loading} />
-          <Button variant="text" onClick={onClear} disabled={loading || (!codigo && !fecha)}>Limpiar</Button>
-          <Button variant="contained" color="primary" onClick={() => { start(); nav('/ventas/nuevo'); }}>
+          <TextField
+            select size="small" label="Estado envío" value={estadoEnvio}
+            onChange={e => setEstadoEnvio(e.target.value)} sx={{ minWidth: 200 }}
+            disabled={loading}
+          >
+            {ESTADOS_ENVIO.map(o => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
+          </TextField>
+          <Button variant="text" onClick={onClear} disabled={loading || (!codigo && !fecha && !estadoEnvio)}>Limpiar</Button>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={() => { start(); nav('/ventas/nuevo'); }} // ✅ usar nav()
+          >
             Nueva Venta
           </Button>
         </Stack>
@@ -162,8 +166,11 @@ export default function Ventas() {
           rows={ventas}
           columns={columns}
           loading={loading}
-          onView={row => { start(); nav(`/ventas/ver/${row.id}`); }}
-          onEdit={row => { if (!isAdmin && isLocked(row)) return; start(); nav(`/ventas/editar/${row.id}`); }}
+          onView={row => { start(); nav(`/ventas/ver/${row.id}`); }}   // ✅ usar nav()
+          onEdit={row => {                                           // ✅ usar nav()
+            if (!isAdmin && isLocked(row)) return;
+            start(); nav(`/ventas/editar/${row.id}`);
+          }}
           onDelete={row => {
             if (!isAdmin && isLocked(row)) return;
             if (window.confirm('¿Eliminar esta venta?')) {
@@ -171,10 +178,9 @@ export default function Ventas() {
               deleteVenta(row.id)
                 .then(() => {
                   if (ventas.length === 1 && page > 1) {
-                    // si borramos la última de la página, retrocedemos una página
                     setPage(p => p - 1);
                   } else {
-                    if (codigo || fecha) return handleSearch({ codigo, fecha });
+                    if (codigo || fecha || estadoEnvio) return handleSearch({ codigo, fecha, estado_envio: estadoEnvio });
                     return loadVentas();
                   }
                 })
@@ -185,11 +191,10 @@ export default function Ventas() {
           actionGuard={{ isAdmin, isLocked }}
         />
 
-        {/* Paginador MUI desacoplado del DataTable por compatibilidad */}
         <TablePagination
           component="div"
           count={total}
-          page={page - 1} // TablePagination es 0-based
+          page={page - 1}
           onPageChange={(_, newPage) => setPage(newPage + 1)}
           rowsPerPage={limit}
           onRowsPerPageChange={(e) => {

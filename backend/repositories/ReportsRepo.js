@@ -1,11 +1,14 @@
 // repositories/ReportsRepo.js
 const pool = require('../config/db');
 
-/* =========================
- *  Utilidades de zona horaria
- * ========================= */
+/* ========= Utilidades ========= */
 function sanitizeTz(tz) {
   return (/^[+-]\d{2}:\d{2}$/).test(tz) ? tz : '+00:00';
+}
+function normalizeEstado(e) {
+  if (!e || e === 'todas') return null;
+  if (e === 'pendiente') return 'pendiente_pago';
+  return e; // pagada | cancelada
 }
 const tzDateExpr = "DATE(CONVERT_TZ(v.fecha, '+00:00', ?))";
 function pushDateFilter(whereArr, paramsArr, op, tzSafe, value) {
@@ -13,13 +16,12 @@ function pushDateFilter(whereArr, paramsArr, op, tzSafe, value) {
   paramsArr.push(tzSafe, value);
 }
 
-/* =========================
- *  Ventas: paginado + conteo
- * ========================= */
+/* ========= Ventas: paginado + conteo ========= */
 exports.findSales = async ({ limit, offset, from, to, estado, tz }) => {
   const tzSafe = sanitizeTz(tz);
-  const where = ['v.estado_pago = ?'];          // << usamos estado de pago
-  const params = [estado];
+  const estadoNorm = normalizeEstado(estado) ?? 'pagada';
+  const where = ['v.estado_pago = ?'];
+  const params = [estadoNorm];
   if (from) pushDateFilter(where, params, '>=', tzSafe, from);
   if (to)   pushDateFilter(where, params, '<=', tzSafe, to);
 
@@ -42,8 +44,9 @@ exports.findSales = async ({ limit, offset, from, to, estado, tz }) => {
 
 exports.countSales = async ({ from, to, estado, tz }) => {
   const tzSafe = sanitizeTz(tz);
+  const estadoNorm = normalizeEstado(estado) ?? 'pagada';
   const where = ['v.estado_pago = ?'];
-  const params = [estado];
+  const params = [estadoNorm];
   if (from) pushDateFilter(where, params, '>=', tzSafe, from);
   if (to)   pushDateFilter(where, params, '<=', tzSafe, to);
   const sql = `SELECT COUNT(*) AS total FROM ventas v WHERE ${where.join(' AND ')}`;
@@ -51,14 +54,13 @@ exports.countSales = async ({ from, to, estado, tz }) => {
   return total;
 };
 
-/* =========================
- *  KPIs y agrupados
- * ========================= */
+/* ========= KPIs y agrupados ========= */
 exports.findKpis = async ({ from, to, estado, tz }) => {
   const tzSafe = sanitizeTz(tz);
   const where = [];
   const params = [];
-  if (estado && estado !== 'todas') { where.push('v.estado_pago = ?'); params.push(estado); }
+  const estadoNorm = normalizeEstado(estado);
+  if (estadoNorm) { where.push('v.estado_pago = ?'); params.push(estadoNorm); }
   if (from) pushDateFilter(where, params, '>=', tzSafe, from);
   if (to)   pushDateFilter(where, params, '<=', tzSafe, to);
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -81,7 +83,8 @@ exports.findSalesByDay = async ({ from, to, estado, tz }) => {
   const tzSafe = sanitizeTz(tz);
   const where = [];
   const params = [];
-  if (estado && estado !== 'todas') { where.push('v.estado_pago = ?'); params.push(estado); }
+  const estadoNorm = normalizeEstado(estado);
+  if (estadoNorm) { where.push('v.estado_pago = ?'); params.push(estadoNorm); }
   if (from) pushDateFilter(where, params, '>=', tzSafe, from);
   if (to)   pushDateFilter(where, params, '<=', tzSafe, to);
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -97,12 +100,12 @@ exports.findSalesByDay = async ({ from, to, estado, tz }) => {
   return rows;
 };
 
-// detalle_venta: usar subtotal por línea
 exports.findSalesByProduct = async ({ from, to, estado, tz, limit = 20 }) => {
   const tzSafe = sanitizeTz(tz);
   const where = [];
   const params = [];
-  if (estado && estado !== 'todas') { where.push('v.estado_pago = ?'); params.push(estado); }
+  const estadoNorm = normalizeEstado(estado);
+  if (estadoNorm) { where.push('v.estado_pago = ?'); params.push(estadoNorm); }
   if (from) pushDateFilter(where, params, '>=', tzSafe, from);
   if (to)   pushDateFilter(where, params, '<=', tzSafe, to);
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -127,7 +130,8 @@ exports.findSalesByCategory = async ({ from, to, estado, tz }) => {
   const tzSafe = sanitizeTz(tz);
   const where = [];
   const params = [];
-  if (estado && estado !== 'todas') { where.push('v.estado_pago = ?'); params.push(estado); }
+  const estadoNorm = normalizeEstado(estado);
+  if (estadoNorm) { where.push('v.estado_pago = ?'); params.push(estadoNorm); }
   if (from) pushDateFilter(where, params, '>=', tzSafe, from);
   if (to)   pushDateFilter(where, params, '<=', tzSafe, to);
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -152,7 +156,8 @@ exports.findSalesByClient = async ({ from, to, estado, tz, limit = 50 }) => {
   const tzSafe = sanitizeTz(tz);
   const where = [];
   const params = [];
-  if (estado && estado !== 'todas') { where.push('v.estado_pago = ?'); params.push(estado); }
+  const estadoNorm = normalizeEstado(estado);
+  if (estadoNorm) { where.push('v.estado_pago = ?'); params.push(estadoNorm); }
   if (from) pushDateFilter(where, params, '>=', tzSafe, from);
   if (to)   pushDateFilter(where, params, '<=', tzSafe, to);
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -176,7 +181,8 @@ exports.findSalesByUser = async ({ from, to, estado, tz }) => {
   const tzSafe = sanitizeTz(tz);
   const where = [];
   const params = [];
-  if (estado && estado !== 'todas') { where.push('v.estado_pago = ?'); params.push(estado); }
+  const estadoNorm = normalizeEstado(estado);
+  if (estadoNorm) { where.push('v.estado_pago = ?'); params.push(estadoNorm); }
   if (from) pushDateFilter(where, params, '>=', tzSafe, from);
   if (to)   pushDateFilter(where, params, '<=', tzSafe, to);
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -195,10 +201,8 @@ exports.findSalesByUser = async ({ from, to, estado, tz }) => {
   return rows;
 };
 
-/* =========================
- *  Inventario y movimientos
- * ========================= */
-exports.findInventory = async () => {
+/* ========= Inventario (paginado) y Bajo stock ========= */
+exports.findInventory = async ({ limit=50, offset=0 }) => {
   const sql = `
     SELECT p.id, p.nombre, p.stock, p.precio_venta,
            ROUND((
@@ -212,38 +216,33 @@ exports.findInventory = async () => {
     FROM productos p
     WHERE p.is_deleted = 0
     ORDER BY valuacion DESC
+    LIMIT ? OFFSET ?
   `;
-  const [rows] = await pool.query(sql);
+  const [rows] = await pool.query(sql, [Number(limit)||50, Number(offset)||0]);
   return rows;
 };
 
-exports.findLowStock = async ({ threshold = 2 }) => {
+exports.countInventory = async () => {
+  const [[{ total }]] = await pool.query(`SELECT COUNT(*) AS total FROM productos p WHERE p.is_deleted=0`);
+  return total;
+};
+
+exports.findLowStock = async ({ threshold = 2, limit=50, offset=0 }) => {
   const [rows] = await pool.query(
     `SELECT id, nombre, stock
      FROM productos
      WHERE is_deleted=0 AND stock <= ?
-     ORDER BY stock ASC`,
-    [Number(threshold)||2]
+     ORDER BY stock ASC, id ASC
+     LIMIT ? OFFSET ?`,
+    [Number(threshold)||2, Number(limit)||50, Number(offset)||0]
   );
   return rows;
 };
 
-exports.findMovements = async ({ from, to, tipo }) => {
-  const where = ['1=1'];
-  const params = [];
-  if (tipo) { where.push('h.tipo_transaccion = ?'); params.push(tipo); }
-  if (from) { where.push('DATE(h.fecha_transaccion) >= ?'); params.push(from); }
-  if (to)   { where.push('DATE(h.fecha_transaccion) <= ?'); params.push(to); }
-
-  const sql = `
-    SELECT h.id_transaccion, h.id_producto, p.nombre,
-           h.tipo_transaccion, h.fecha_transaccion,
-           h.precio_transaccion, h.cantidad_transaccion
-    FROM historial_transacciones h
-    JOIN productos p ON p.id = h.id_producto
-    WHERE ${where.join(' AND ')}
-    ORDER BY h.fecha_transaccion DESC
-  `;
-  const [rows] = await pool.query(sql, params);
-  return rows;
+exports.countLowStock = async ({ threshold = 2 }) => {
+  const [[{ total }]] = await pool.query(
+    `SELECT COUNT(*) AS total FROM productos WHERE is_deleted=0 AND stock <= ?`,
+    [Number(threshold)||2]
+  );
+  return total;
 };

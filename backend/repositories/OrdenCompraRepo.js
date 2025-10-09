@@ -125,11 +125,22 @@ class OrdenCompraRepo {
   static async fetchDetalle(connOrPool, ordenId) {
     const executor = connOrPool.query ? connOrPool : pool;
     const [rows] = await executor.query(
-      `SELECT id, producto_id, cantidad, cantidad_restante,
-              precio_unitario, impuesto, libraje, descuento, subtotal
-       FROM detalle_compra
-       WHERE orden_compra_id = ?`,
-      [ordenId]
+       `SELECT
+       dc.id,
+       dc.producto_id,
+       p.nombre      AS producto_nombre,
+      p.imagen_url  AS producto_imagen_url,
+       dc.cantidad,
+       dc.cantidad_restante,
+       dc.precio_unitario,
+       dc.impuesto,
+       dc.libraje,
+       dc.descuento,
+       dc.subtotal
+     FROM detalle_compra dc
+    JOIN productos p ON p.id = dc.producto_id
+     WHERE dc.orden_compra_id = ?`,
++    [ordenId]
     );
     return rows;
   }

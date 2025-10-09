@@ -8,15 +8,17 @@ import {
   Typography,
   Paper,
   Box,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Select,
 } from '@mui/material';
 
+import AsyncAutocomplete from '../components/AsyncAutocomplete';
+
 import { createProducto, fetchProducto, updateProducto } from '../api/productos';
-import { fetchMarcas } from '../api/marcas';
-import { fetchCategorias } from '../api/categorias';
+import { fetchMarcasPage, fetchMarcaOptionById } from '../api/marcas';
+import {
+  fetchCategoria,
+  searchCategoriasPadre,
+  searchSubcategorias,
+} from '../api/categorias';
 import { subirImagen } from '../api/imagenes';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLoading } from '../contexts/LoadingContext';
@@ -30,10 +32,12 @@ export default function ProductoForm() {
   const { showToast } = useToast();
   const confirm = useConfirm();
 
-  // Listas para selects
-  const [marcas, setMarcas] = useState([]);
-  const [categorias, setCategorias] = useState([]);
-  const [padreSel, setPadreSel] = useState('');
+  // Marca (Autocomplete)
+  const [marcaSel, setMarcaSel] = useState(null); // { id, label }
+
+  // Categoría y subcategoría (Autocompletes)
+  const [padreSel, setPadreSel] = useState(null);   // { id, label, ... }
+  const [subcatSel, setSubcatSel] = useState(null); // { id, label, ... }
 
   // Gestión de imagen
   const [file, setFile] = useState(null);
@@ -43,10 +47,11 @@ export default function ProductoForm() {
   const [form, setForm] = useState({
     nombre: '',
     descripcion: '',
-    // Campos informativos (solo lectura en el form)
+    // Informativos
     precio_compra: 0,
     precio_venta: '',
     stock: 0,
+    // NOTA: mantenemos estos por compatibilidad, pero los valores reales vienen de *Sel
     marca_id: '',
     categoria_id: '',
     imagen_url: '',
@@ -60,28 +65,12 @@ export default function ProductoForm() {
   const mountedRef = useRef(true);
   useEffect(() => () => { mountedRef.current = false; }, []);
 
-  // Al montar el form, apaga el overlay que quedó encendido desde la lista
+  // Apaga overlay que quedó encendido desde la lista
   useEffect(() => { stop(); }, [stop]);
-
-  // Carga de marcas y categorías
-  useEffect(() => {
-    (async () => {
-      try {
-        const [mRes, cRes] = await Promise.all([fetchMarcas(), fetchCategorias()]);
-        if (!mountedRef.current) return;
-        setMarcas(Array.isArray(mRes.data) ? mRes.data : []);
-        setCategorias(Array.isArray(cRes.data) ? cRes.data : []);
-      } catch (err) {
-        console.error('Error cargando catálogos:', err);
-        showToast({ message: 'Error cargando catálogos', severity: 'error' });
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Carga producto en edición
   useEffect(() => {
-    if (!id || !marcas.length || !categorias.length) return;
+    if (!id) return;
     (async () => {
       try {
         const res = await fetchProducto(id);
@@ -100,16 +89,41 @@ export default function ProductoForm() {
         });
         if (data.imagen_url) setPreview(data.imagen_url);
 
-        const sub = categorias.find((c) => c.id === data.categoria_id);
-        if (sub) setPadreSel(String(sub.parent_id || ''));
-        setDirty(false); // tras cargar, no hay cambios pendientes
+        // Precargar Marca como opción del autocomplete
+        if (data.marca_id) {
+          try {
+            const mOpt = await fetchMarcaOptionById(data.marca_id);
+            if (mountedRef.current) setMarcaSel(mOpt);
+          } catch (_) { /* el usuario podrá buscarla manualmente */ }
+        }
+
+        // Resolver etiquetas para autocompletes de categorías
+        if (data.categoria_id) {
+          try {
+            const subRes = await fetchCategoria(data.categoria_id);
+            const sub = subRes?.data;
+            if (sub) {
+              const subOpt = { id: sub.id, label: sub.nombre, ...sub };
+              setSubcatSel(subOpt);
+              if (sub.parent_id) {
+                const padreRes = await fetchCategoria(sub.parent_id);
+                const p = padreRes?.data;
+                if (p) setPadreSel({ id: p.id, label: p.nombre, ...p });
+              } else {
+                setPadreSel(subOpt);
+              }
+            }
+          } catch (_) { /* permitir que el usuario busque manualmente */ }
+        }
+
+        setDirty(false);
       } catch (err) {
         console.error('Error cargando producto:', err);
         showToast({ message: 'Error cargando producto', severity: 'error' });
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, marcas, categorias]);
+  }, [id]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -132,6 +146,36 @@ export default function ProductoForm() {
     };
   }, [preview]);
 
+  // -------- Autocomplete helpers (categorías) --------
+  const mapCategoriaPage = (raw) => {
+    const data = raw?.data ?? raw;
+    if (Array.isArray(data)) {
+      return {
+        items: data.map((c) => ({ id: c.id, label: c.nombre, ...c })),
+        hasMore: false,
+      };
+    }
+    const items = Array.isArray(data?.items) ? data.items : [];
+    const page = Number(data?.page ?? 1);
+    const pages = Number(data?.pages ?? 1);
+    return {
+      items: items.map((c) => ({ id: c.id, label: c.nombre, ...c })),
+      hasMore: page < pages,
+    };
+  };
+
+  const fetchPadresPage = async ({ q, page, limit }) => {
+    const res = await searchCategoriasPadre({ q, page, limit });
+    return mapCategoriaPage(res);
+  };
+
+  const fetchSubcatsPage = async ({ q, page, limit }) => {
+    if (!padreSel?.id) return { items: [], hasMore: false };
+    const res = await searchSubcategorias(padreSel.id, { q, page, limit });
+    return mapCategoriaPage(res);
+  };
+  // ---------------------------------------------------
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -147,7 +191,13 @@ export default function ProductoForm() {
       if (!ok) return;
     }
 
-    start(); // overlay mientras procesa y navega
+    // Validaciones mínimas
+    if (!subcatSel?.id) {
+      showToast({ message: 'Selecciona una subcategoría', severity: 'warning' });
+      return;
+    }
+
+    start(); // overlay mientras procesa
     try {
       let imagen_url = form.imagen_url || '';
       if (file) {
@@ -155,13 +205,13 @@ export default function ProductoForm() {
         imagen_url = res?.data?.url ?? res?.url ?? imagen_url;
       }
 
-      // No enviar precio_compra ni stock (los maneja compras)
+      // Construir payload final
       const payload = {
         nombre: form.nombre,
         descripcion: form.descripcion,
         precio_venta: parseFloat(form.precio_venta) || 0,
-        marca_id: form.marca_id ? Number(form.marca_id) : null,
-        categoria_id: form.categoria_id ? Number(form.categoria_id) : null,
+        marca_id: marcaSel?.id ? Number(marcaSel.id) : null,          // 👈 de autocomplete
+        categoria_id: subcatSel?.id ? Number(subcatSel.id) : null,    // 👈 de autocomplete
         imagen_url,
         presentacion: form.presentacion || '',
       };
@@ -196,10 +246,6 @@ export default function ProductoForm() {
     start();
     nav('/productos');
   };
-
-  // Filtrar jerarquía
-  const padres = categorias.filter((c) => c.parent_id == null);
-  const subcats = categorias.filter((c) => String(c.parent_id) === padreSel);
 
   return (
     <Container maxWidth="sm" sx={{ mt: 4 }}>
@@ -263,70 +309,56 @@ export default function ProductoForm() {
               required
             />
 
-            <FormControl fullWidth>
-              <InputLabel id="marca-label">Marca</InputLabel>
-              <Select
-                labelId="marca-label"
-                label="Marca"
-                name="marca_id"
-                value={form.marca_id}
-                onChange={handleChange}
-              >
-                <MenuItem value="">
-                  <em>— Selecciona una marca —</em>
-                </MenuItem>
-                {marcas.map((m) => (
-                  <MenuItem key={m.id} value={String(m.id)}>
-                    {m.nombre}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            {/* Marca (AsyncAutocomplete) */}
+            <AsyncAutocomplete
+              label="Marca"
+              value={marcaSel}
+              onChange={(opt) => {
+                setMarcaSel(opt || null);
+                setForm((f) => ({ ...f, marca_id: opt?.id ? String(opt.id) : '' })); // opcional, por compat
+                setDirty(true);
+              }}
+              fetchPage={fetchMarcasPage}
+              placeholder="Escribe al menos 2 letras…"
+              noOptionsText="Sin resultados"
+              loadingText="Buscando…"
+              isOptionEqualToValue={(a, b) => String(a?.id ?? '') === String(b?.id ?? '')}
+              getOptionLabel={(opt) => opt?.label ?? ''}
+            />
 
-            <FormControl fullWidth>
-              <InputLabel id="padre-label">Categoría</InputLabel>
-              <Select
-                labelId="padre-label"
-                label="Categoría"
-                value={padreSel}
-                onChange={(e) => {
-                  setPadreSel(e.target.value);
-                  setForm((f) => ({ ...f, categoria_id: '' }));
-                  setDirty(true);
-                }}
-                required
-              >
-                <MenuItem value="">
-                  <em>— Elige una categoría —</em>
-                </MenuItem>
-                {padres.map((c) => (
-                  <MenuItem key={c.id} value={String(c.id)}>
-                    {c.nombre}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            {/* Categoría padre */}
+            <AsyncAutocomplete
+              label="Categoría"
+              value={padreSel}
+              onChange={(opt) => {
+                setPadreSel(opt || null);
+                setSubcatSel(null);
+                setForm((f) => ({ ...f, categoria_id: '' }));
+                setDirty(true);
+              }}
+              fetchPage={fetchPadresPage}
+              placeholder="Buscar categoría…"
+              noOptionsText="Sin resultados"
+              loadingText="Buscando…"
+              isOptionEqualToValue={(a, b) => String(a?.id ?? '') === String(b?.id ?? '')}
+              getOptionLabel={(opt) => opt?.label ?? ''}
+            />
 
-            <FormControl fullWidth disabled={!padreSel}>
-              <InputLabel id="sub-label">Subcategoría</InputLabel>
-              <Select
-                labelId="sub-label"
-                label="Subcategoría"
-                name="categoria_id"
-                value={form.categoria_id}
-                onChange={handleChange}
-                required
-              >
-                <MenuItem value="">
-                  <em>— Elige una subcategoría —</em>
-                </MenuItem>
-                {subcats.map((c) => (
-                  <MenuItem key={c.id} value={String(c.id)}>
-                    {c.nombre}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            {/* Subcategoría */}
+            <AsyncAutocomplete
+              label="Subcategoría"
+              value={subcatSel}
+              onChange={(opt) => {
+                setSubcatSel(opt || null);
+                setForm((f) => ({ ...f, categoria_id: opt?.id ? String(opt.id) : '' }));
+                setDirty(true);
+              }}
+              fetchPage={fetchSubcatsPage}
+              placeholder={padreSel ? 'Buscar subcategoría…' : 'Selecciona una categoría primero'}
+              noOptionsText={padreSel ? 'Sin resultados' : 'Primero elige una categoría'}
+              loadingText="Buscando…"
+              disabled={!padreSel}
+            />
 
             {/* Imagen */}
             <div>

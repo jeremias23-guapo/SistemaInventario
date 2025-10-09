@@ -2,9 +2,7 @@ const TransportistaRepo = require('../repositories/TransportistaRepo');
 
 class TransportistaService {
   // Transportistas
-  static async list() {
-    return TransportistaRepo.findAll();
-  }
+ 
 
   static async get(id) {
     const t = await TransportistaRepo.findById(id);
@@ -24,7 +22,9 @@ class TransportistaService {
     await TransportistaRepo.update(id, { nombre: data.nombre.trim(), activo: data.activo ? 1 : 0 });
     return { id, ...data, activo: !!data.activo };
   }
-
+ static async listPaged({ page, pageSize, q }) {
+    return TransportistaRepo.findAllPaged({ page, pageSize, q });
+  }
   static async remove(id) {
     await this.get(id); // valida
     await TransportistaRepo.remove(id);

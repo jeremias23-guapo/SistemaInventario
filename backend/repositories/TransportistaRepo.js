@@ -2,15 +2,35 @@ const pool = require('../config/db');
 
 class TransportistaRepo {
   // --- Transportistas ---
-  static async findAll() {
+  
+ static async findAllPaged({ page, pageSize, q }) {
+    const offset = (page - 1) * pageSize;
+    const like = `%${q}%`;
+
+    const where = q ? 'WHERE nombre LIKE ?' : '';
+    const params = q ? [like] : [];
+
+    // total
+    const [countRows] = await pool.query(
+      `SELECT COUNT(*) AS total FROM transportistas ${where}`,
+      params
+    );
+    const total = countRows[0].total || 0;
+
+    // items
     const [rows] = await pool.query(
       `SELECT id, nombre, activo
          FROM transportistas
-        ORDER BY nombre`
+         ${where}
+        ORDER BY nombre
+        LIMIT ? OFFSET ?`,
+      q ? [like, pageSize, offset] : [pageSize, offset]
     );
-    return rows;
-  }
 
+    const totalPages = Math.max(Math.ceil(total / pageSize), 1);
+
+    return { items: rows, total, page, pageSize, totalPages };
+  }
   static async findById(id) {
     const [rows] = await pool.query(
       `SELECT id, nombre, activo

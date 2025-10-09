@@ -1,8 +1,11 @@
 // backend/routes/proveedores.js
-const express = require('express');
-const ctrl = require('../controllers/ProveedorController');
-const router = express.Router();
 
+const { Router } = require('express');
+const ctrl = require('../controllers/ProveedorController');
+
+const router = Router();
+
+// GET /api/proveedores?page=1&limit=10&search=foo&sortBy=nombre&sortDir=asc
 router.get('/', ctrl.list);
 router.get('/:id', ctrl.get);
 router.post('/', ctrl.create);

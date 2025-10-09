@@ -1,16 +1,17 @@
-// frontend/src/pages/VentaForm.jsx
+// src/pages/VentaForm.jsx
 import React, { useEffect, useState } from 'react';
 import {
   Container, TextField, Button, Stack, Typography, Paper, MenuItem, IconButton, Grid
 } from '@mui/material';
 import { AddCircle, RemoveCircle } from '@mui/icons-material';
 import { fetchVenta, createVenta, updateVenta } from '../api/ventas';
-import { fetchClientes } from '../api/clientes';
-import { fetchTransportistas } from '../api/transportistas';
+import { fetchCliente, searchClientesLight } from '../api/clientes';
+import { searchTransportistasLight, fetchTransportista } from '../api/transportistas';
 import { searchProductosLight } from '../api/productos';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useLoading } from '../contexts/LoadingContext';
 import AsyncAutocomplete from '../components/AsyncAutocomplete';
+import { toast } from '../utils/alerts'
 
 const METODOS = [
   { value: 'transferencia', label: 'transferencia' },
@@ -33,6 +34,28 @@ const ESTADOS_VENTA = [
 
 const fmtMoney = (n) => (Number.isFinite(+n) ? Number(n).toFixed(2) : '0.00');
 
+
+
+/**
+ * Reemplaza todas las ocurrencias de "producto 24" por "Nombre (ID 24)"
+ * Soporta varios IDs en el mismo mensaje.
+ */
+// Reemplaza "producto 40" por "producto <Nombre> ID 40" (sin paréntesis y sin duplicar)
+const prettifyStockError = (rawMsg, lineas) => {
+  if (!rawMsg) return '';
+  const getNombre = (pid) => {
+    const ln = (lineas || []).find(l => String(l.producto_id) === String(pid));
+    return ln?.['_producto']?.label || 'Producto';
+  };
+
+  // Sólo tocamos el patrón "producto <id>" y NADA más (para evitar duplicados)
+  return String(rawMsg).replace(/producto\s+(\d+)/gi, (_, pid) => {
+    const nombre = getNombre(pid);
+    return `producto ${nombre} ID ${pid}`;
+  });
+};
+
+
 export default function VentaForm() {
   const { id } = useParams();
   const isEdit = Boolean(id);
@@ -50,25 +73,17 @@ export default function VentaForm() {
   });
 
   const [lineas, setLineas] = useState([]);
-  const [clientes, setClientes] = useState([]);
-  const [transportistas, setTransportistas] = useState([]);
+  const [clienteSel, setClienteSel] = useState(null);
+  const [transportistaSel, setTransportistaSel] = useState(null);
 
   useEffect(() => { stop(); }, [stop]);
 
   useEffect(() => {
-    fetchClientes().then(r => {
-      const arr = Array.isArray(r?.data) ? r.data : (Array.isArray(r) ? r : []);
-      setClientes(arr || []);
-    }).catch(()=>setClientes([]));
-
-    fetchTransportistas()
-      .then(setTransportistas)
-      .catch(()=>setTransportistas([]));
-
     if (id) {
-      fetchVenta(id).then(r => {
+      fetchVenta(id).then(async (r) => {
         const v = r?.data ?? r ?? {};
         const fetchedLineas = Array.isArray(v.lineas) ? v.lineas : [];
+
         setCabecera({
           codigo: v.codigo || '',
           cliente_id: v.cliente_id?.toString() || '',
@@ -78,6 +93,29 @@ export default function VentaForm() {
           estado_pago:  v.estado_pago  || 'pendiente_pago',
           estado_venta: v.estado_venta || 'activa',
         });
+
+        if (v.cliente_id) {
+          try {
+            const respC = await fetchCliente(v.cliente_id);
+            const cl = respC?.data ?? respC ?? null;
+            if (cl) setClienteSel({ id: String(cl.id), label: cl.nombre });
+            else setClienteSel({ id: String(v.cliente_id), label: '' });
+          } catch {
+            setClienteSel({ id: String(v.cliente_id), label: '' });
+          }
+        } else setClienteSel(null);
+
+        if (v.transportista_id) {
+          try {
+            const respT = await fetchTransportista(v.transportista_id);
+            const tr = respT?.data ?? respT ?? null;
+            if (tr) setTransportistaSel({ id: String(tr.id), label: tr.nombre });
+            else setTransportistaSel({ id: String(v.transportista_id), label: '' });
+          } catch {
+            setTransportistaSel({ id: String(v.transportista_id), label: '' });
+          }
+        } else setTransportistaSel(null);
+
         setLineas(
           fetchedLineas.map(ln => ({
             _producto: ln.producto_id && ln.producto_nombre
@@ -89,7 +127,7 @@ export default function VentaForm() {
             descuento: (ln.descuento || 0).toString()
           }))
         );
-      }).catch(()=>setLineas([]));
+      }).catch(() => setLineas([]));
     }
   }, [id]);
 
@@ -118,11 +156,17 @@ export default function VentaForm() {
 
   const handleSubmit = async e => {
     e.preventDefault();
-    if (!Array.isArray(lineas) || lineas.length === 0) return alert('Debe agregar al menos una línea');
 
+    // Validación mínima útil
+    if (!cabecera.cliente_id) {
+     return toast.warn('Cliente requerido', 'Debe seleccionar un cliente.');
+    }
+    if (!Array.isArray(lineas) || lineas.length === 0) {
+      return toast.warn('Sin líneas', 'Debe agregar al menos una línea.');
+    }
     for (const ln of lineas) {
       if (!ln.producto_id || Number(ln.cantidad) <= 0 || Number(ln.precio_unitario) <= 0) {
-        return alert('Cada línea requiere producto, cantidad>0 y precio>0');
+         return toast.warn('Datos incompletos', 'Cada línea requiere producto, cantidad > 0 y precio > 0.');
       }
     }
 
@@ -140,26 +184,53 @@ export default function VentaForm() {
         descuento: Number(ln.descuento) || 0
       }))
     };
-
     const payload = isEdit ? { ...payloadBase, codigo: cabecera.codigo } : payloadBase;
 
     try {
       if (isEdit) await updateVenta(id, payload);
       else await createVenta(payload);
+
+      toast.ok('Guardado', 'La venta se guardó correctamente.', { timer: 1800 });
       nav('/ventas');
     } catch (err) {
+      const raw = err?.response?.data?.error || err?.message || 'Error desconocido';
+      const pretty = prettifyStockError(raw, lineas);
+
+   toast.error('No se pudo guardar', pretty);
+      // Útil para depurar si hace falta
+      // eslint-disable-next-line no-console
       console.error('Error guardando venta', err?.response?.data || err);
-      alert('Hubo un error: ' + (err?.response?.data?.error || err.message));
       stop();
     }
   };
 
   const handleCancel = () => { start(); nav('/ventas'); };
 
-  // Adapter fetch para el autocomplete
   const fetchProductosPage = async ({ q, page, limit }) => {
     const res = await searchProductosLight({ q, page, pageSize: limit });
     return { items: res?.items || [], hasMore: !!res?.hasMore };
+  };
+  const fetchTransportistasPage = async ({ q, page, limit }) => {
+    const res = await searchTransportistasLight({ q, page, pageSize: limit });
+    const items = Array.isArray(res?.items) ? res.items
+                : Array.isArray(res?.data) ? res.data
+                : [];
+    const total = Number(res?.total ?? 0);
+    return {
+      items: items.map(t => ({ id: String(t.id), label: t.nombre })),
+      hasMore: total ? page * limit < total : Boolean(res?.hasMore)
+    };
+  };
+  const fetchClientesPage = async ({ q, page, limit }) => {
+    const res = await searchClientesLight({ q, page, pageSize: limit });
+    const items = Array.isArray(res?.items) ? res.items
+                : Array.isArray(res?.data) ? res.data
+                : [];
+    const total = Number(res?.total ?? 0);
+    return {
+      items: items.map(c => ({ id: String(c.id), label: c.nombre })),
+      hasMore: total ? page * limit < total : Boolean(res?.hasMore)
+    };
   };
 
   return (
@@ -177,22 +248,56 @@ export default function VentaForm() {
               )}
 
               <Grid item xs={12} md={isEdit ? 4 : 6}>
-                <TextField select label="Cliente" name="cliente_id" value={cabecera.cliente_id} onChange={handleCabeceraChange} required fullWidth>
-                  {(clientes || []).map(c => <MenuItem key={c.id} value={c.id.toString()}>{c.nombre}</MenuItem>)}
-                </TextField>
+                <AsyncAutocomplete
+                  label="Cliente"
+                  value={clienteSel}
+                  onChange={(val) => {
+                    setClienteSel(val);
+                    setCabecera(c => ({ ...c, cliente_id: val?.id ?? '' }));
+                  }}
+                  fetchPage={fetchClientesPage}
+                  placeholder="Buscar cliente..."
+                  noOptionsText="Sin resultados"
+                  loadingText="Buscando…"
+                  limit={10}
+                  popupMinWidth={360}
+                />
+                <Button size="small" onClick={() => { setClienteSel(null); setCabecera(c => ({ ...c, cliente_id: '' })); }} sx={{ mt: 0.5 }}>
+                  Sin cliente
+                </Button>
               </Grid>
 
               <Grid item xs={12} md={isEdit ? 4 : 6}>
-                <TextField select label="Método de pago" name="metodo_pago" value={cabecera.metodo_pago} onChange={handleCabeceraChange} fullWidth>
+                <TextField
+                  select
+                  label="Método de pago"
+                  name="metodo_pago"
+                  value={cabecera.metodo_pago}
+                  onChange={handleCabeceraChange}
+                  fullWidth
+                >
                   {METODOS.map(o => <MenuItem key={o.value} value={o.value}>{o.label}</MenuItem>)}
                 </TextField>
               </Grid>
 
               <Grid item xs={12} md={isEdit ? 4 : 6}>
-                <TextField select label="Transportista" name="transportista_id" value={cabecera.transportista_id} onChange={handleCabeceraChange} fullWidth>
-                  <MenuItem value="">(sin transportista)</MenuItem>
-                  {(transportistas || []).map(t => <MenuItem key={t.id} value={t.id.toString()}>{t.nombre}</MenuItem>)}
-                </TextField>
+                <AsyncAutocomplete
+                  label="Transportista"
+                  value={transportistaSel}
+                  onChange={(val) => {
+                    setTransportistaSel(val);
+                    setCabecera(c => ({ ...c, transportista_id: val?.id ?? '' }));
+                  }}
+                  fetchPage={fetchTransportistasPage}
+                  placeholder="Buscar transportista..."
+                  noOptionsText="Sin resultados"
+                  loadingText="Buscando…"
+                  limit={5}
+                  popupMinWidth={360}
+                />
+                <Button size="small" onClick={() => { setTransportistaSel(null); setCabecera(c => ({ ...c, transportista_id: '' })); }} sx={{ mt: 0.5 }}>
+                  Sin transportista
+                </Button>
               </Grid>
 
               <Grid item xs={12} md={4}>
@@ -236,7 +341,10 @@ export default function VentaForm() {
                           )
                         );
                       }}
-                      fetchPage={fetchProductosPage}
+                      fetchPage={async ({ q, page, limit }) => {
+                        const res = await searchProductosLight({ q, page, pageSize: limit });
+                        return { items: res?.items || [], hasMore: !!res?.hasMore };
+                      }}
                       popupMinWidth={420}
                       getOptionLabel={(opt) => opt?.label ?? ''}
                       renderOption={(props, opt) => (

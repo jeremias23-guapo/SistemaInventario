@@ -78,64 +78,67 @@ class VentaRepo {
   }
 
   // ---- BÚSQUEDA CON PÁGINA/LÍMITE (muestra comisión guardada y total neto)
-  static async search({ codigo, fecha, page = 1, limit = 10 }) {
-    const conditions = [];
-    const params = [];
+ static async search({ codigo, fecha, estado_envio, page = 1, limit = 10 }) {
+  const conditions = [];
+  const params = [];
 
-    if (codigo) {
-      conditions.push('v.codigo LIKE ?');
-      params.push(`${codigo}%`);
-    }
-
-    if (fecha) {
-      const start = new Date(`${fecha}T00:00:00-06:00`);
-      const end   = new Date(`${fecha}T24:00:00-06:00`);
-      const pad = n => String(n).padStart(2, '0');
-      const fmt = d => `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
-      const startUtc = fmt(start);
-      const endUtc   = fmt(end);
-      conditions.push('(v.fecha >= ? AND v.fecha < ?)');
-      params.push(startUtc, endUtc);
-    }
-
-    const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
-
-    // total para paginación
-    const [cntRows] = await pool.query(
-      `SELECT COUNT(*) AS total
-         FROM ventas v
-         JOIN clientes c ON v.cliente_id = c.id
-         LEFT JOIN usuarios u ON u.id = v.usuario_id
-         LEFT JOIN transportistas t ON t.id = v.transportista_id
-         ${where}`,
-      params
-    );
-    const total = Number(cntRows?.[0]?.total || 0);
-
-    // data paginada
-    const offset = (Math.max(1, +page) - 1) * Math.max(1, +limit);
-    const sql = `
-      SELECT
-        v.id, v.codigo, v.cliente_id, c.nombre AS cliente_nombre,
-        v.fecha,
-        v.metodo_pago, v.estado_envio, v.estado_pago, v.estado_venta,
-        v.total_venta,
-        v.comision_transportista AS transportista_comision,
-        (v.total_venta - v.comision_transportista) AS total_venta_neta,
-        u.username AS usuario_nombre,
-        v.transportista_id, t.nombre AS transportista_nombre
-      FROM ventas v
-      JOIN clientes c ON v.cliente_id = c.id
-      LEFT JOIN usuarios u ON u.id = v.usuario_id
-      LEFT JOIN transportistas t ON t.id = v.transportista_id
-      ${where}
-      ORDER BY v.fecha DESC
-      LIMIT ? OFFSET ?
-    `;
-    const [rows] = await pool.query(sql, [...params, Math.max(1, +limit), offset]);
-
-    return { data: rows, pagination: { page: +page || 1, limit: +limit || 10, total } };
+  if (codigo) {
+    conditions.push('v.codigo LIKE ?');
+    params.push(`${codigo}%`);
   }
+
+  if (fecha) {
+    const start = new Date(`${fecha}T00:00:00-06:00`);
+    const end   = new Date(`${fecha}T24:00:00-06:00`);
+    const pad = n => String(n).padStart(2, '0');
+    const fmt = d => `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+    const startUtc = fmt(start);
+    const endUtc   = fmt(end);
+    conditions.push('(v.fecha >= ? AND v.fecha < ?)');
+    params.push(startUtc, endUtc);
+  }
+
+  if (estado_envio && ['pendiente_envio','enviado','recibido'].includes(String(estado_envio))) {
+    conditions.push('v.estado_envio = ?');
+    params.push(estado_envio);
+  }
+
+  const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+
+  const [cntRows] = await pool.query(
+    `SELECT COUNT(*) AS total
+       FROM ventas v
+       JOIN clientes c ON v.cliente_id = c.id
+       LEFT JOIN usuarios u ON u.id = v.usuario_id
+       LEFT JOIN transportistas t ON t.id = v.transportista_id
+       ${where}`,
+    params
+  );
+  const total = Number(cntRows?.[0]?.total || 0);
+
+  const offset = (Math.max(1, +page) - 1) * Math.max(1, +limit);
+  const sql = `
+    SELECT
+      v.id, v.codigo, v.cliente_id, c.nombre AS cliente_nombre,
+      v.fecha,
+      v.metodo_pago, v.estado_envio, v.estado_pago, v.estado_venta,
+      v.total_venta,
+      v.comision_transportista AS transportista_comision,
+      (v.total_venta - v.comision_transportista) AS total_venta_neta,
+      u.username AS usuario_nombre,
+      v.transportista_id, t.nombre AS transportista_nombre
+    FROM ventas v
+    JOIN clientes c ON v.cliente_id = c.id
+    LEFT JOIN usuarios u ON u.id = v.usuario_id
+    LEFT JOIN transportistas t ON t.id = v.transportista_id
+    ${where}
+    ORDER BY v.fecha DESC
+    LIMIT ? OFFSET ?
+  `;
+  const [rows] = await pool.query(sql, [...params, Math.max(1, +limit), offset]);
+
+  return { data: rows, pagination: { page: +page || 1, limit: +limit || 10, total } };
+}
 
   // ---- Listado con paginación
   static async findAll({ page = 1, limit = 10 } = {}) {

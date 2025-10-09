@@ -1,8 +1,14 @@
 const TransportistaService = require('../services/TransportistaService');
 
 exports.list = async (req, res, next) => {
-  try { res.json(await TransportistaService.list()); }
-  catch (e) { next(e); }
+  try {
+    const page = Math.max(parseInt(req.query.page || '1', 10), 1);
+    const pageSize = Math.min(Math.max(parseInt(req.query.pageSize || '10', 10), 1), 100);
+    const q = (req.query.q || '').trim();
+
+    const data = await TransportistaService.listPaged({ page, pageSize, q });
+    res.json(data);
+  } catch (e) { next(e); }
 };
 
 exports.getOne = async (req, res, next) => {

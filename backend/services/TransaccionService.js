@@ -4,21 +4,47 @@ const TransaccionRepo = require('../repositories/TransaccionRepo');
 
 class TransaccionService {
   // Listar todas las transacciones
-  async listAll() {
-    return TransaccionRepo.findAll();
+ async listPage({ limit = 50, cursor }) {
+  let parsed = null;
+  if (cursor) {
+    try {
+      const [fecha, id] = Buffer.from(cursor, 'base64').toString('utf8').split('|');
+      if (fecha && id) parsed = { fecha, id };
+    } catch (_) {}
   }
 
-  // Obtener transacción por ID
-  async getById(id) {
-    const tx = await TransaccionRepo.findById(id);
-    if (!tx) {
-      const err = new Error('Transacción no encontrada');
-      err.statusCode = 404;
-      throw err;
+  const items = await TransaccionRepo.findPage({ limit, cursor: parsed });
+
+  let nextCursor = null;
+  if (items.length === Number(limit)) {
+    const last = items[items.length - 1];
+
+    // 👇 Asegura que sea Date válida (maneja string/Date)
+    const asDate = last.fecha_transaccion instanceof Date
+      ? last.fecha_transaccion
+      : new Date(last.fecha_transaccion);
+
+    if (!Number.isNaN(asDate.getTime())) {
+      const iso = asDate.toISOString();
+      nextCursor = Buffer.from(`${iso}|${last.id_transaccion}`, 'utf8').toString('base64');
+    } else {
+      // Si por cualquier razón la fecha viene mal, no generes cursor para no 500ear
+      nextCursor = null;
     }
+  }
+
+  return {
+    items,
+    nextCursor,
+    hasMore: Boolean(nextCursor),
+  };
+}
+
+  async getById(id) {
+    const tx = await require('../repositories/TransaccionRepo').findById(id);
+    if (!tx) { const err = new Error('Transacción no encontrada'); err.statusCode = 404; throw err; }
     return tx;
   }
-
   // Crear una transacción (compra o venta)
   async create(data) {
     // Aquí podrías validar stock para ventas:

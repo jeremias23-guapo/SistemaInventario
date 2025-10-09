@@ -1,9 +1,19 @@
+// controllers/MarcaController.js
 const MarcaService = require('../services/MarcaService');
 
 exports.getMarcas = async (req, res) => {
   try {
-    const list = await MarcaService.listarMarcas();
-    res.json(list);
+    const page     = Number.parseInt(req.query.page, 10)     || 1;
+    const pageSize = Number.parseInt(req.query.pageSize, 10) || 10;
+    const nombre   = (req.query.nombre || '').trim();
+
+    const { rows, total, page: p, pageSize: ps } =
+      await MarcaService.listarMarcas({ page, pageSize, nombre });
+
+    res.json({
+      data: rows,
+      pagination: { total, page: p, pageSize: ps },
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

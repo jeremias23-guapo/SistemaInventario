@@ -1,8 +1,9 @@
+// services/MarcaService.js
 const MarcaRepo = require('../repositories/MarcaRepo');
 
 class MarcaService {
-  async listarMarcas() {
-    return MarcaRepo.findAll();
+  async listarMarcas({ page, pageSize, nombre } = {}) {
+    return MarcaRepo.findAll({ page, pageSize, nombre });
   }
 
   async obtenerMarca(id) {
@@ -12,17 +13,13 @@ class MarcaService {
   }
 
   async crearMarca(data) {
-    if (!data.nombre?.trim()) {
-      throw new Error('Validación: nombre requerido');
-    }
+    if (!data.nombre?.trim()) throw new Error('Validación: nombre requerido');
     return MarcaRepo.create({ nombre: data.nombre.trim() });
   }
 
   async actualizarMarca(id, data) {
     await this.obtenerMarca(id);
-    if (!data.nombre?.trim()) {
-      throw new Error('Validación: nombre requerido');
-    }
+    if (!data.nombre?.trim()) throw new Error('Validación: nombre requerido');
     return MarcaRepo.update(id, { nombre: data.nombre.trim() });
   }
 
