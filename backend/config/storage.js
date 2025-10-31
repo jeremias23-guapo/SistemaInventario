@@ -1,2 +1,11 @@
+// ✅ config/storage.js
 const { Storage } = require('@google-cloud/storage');
-const storage = new Storage(); // ✅ usa las credenciales del servicio de Cloud Run
+
+// Crea cliente de Google Cloud Storage
+const storage = new Storage();
+
+// Indica el nombre exacto de tu bucket
+const bucketName = 'inventarioimagenes';
+const bucket = storage.bucket(bucketName);
+
+module.exports = bucket;
