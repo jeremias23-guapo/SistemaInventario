@@ -1,222 +1,288 @@
-// src/components/Layout.jsx
-//formulario de layout con drawer y appbar principal
-import React, { useContext, useState } from 'react';
+import * as React from "react";
 import {
-  Box, Drawer, List, ListItemButton, ListItemIcon,
-  ListItemText, Toolbar, AppBar, Typography, IconButton,
-  Menu, MenuItem, Divider
+  AppBar,
+  Avatar,
+  Box,
+  CssBaseline,
+  Divider,
+  Drawer,
+  IconButton,
+  List,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  Toolbar,
+  Tooltip,
+  Typography,
+  Paper,
+  useMediaQuery,
+  alpha,
+} from "@mui/material";
+import { styled, useTheme } from "@mui/material/styles";
+import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 
-} from '@mui/material';
-import DashboardIcon from '@mui/icons-material/Dashboard';
-import {
-  Inventory2, ShoppingCart, Category, MonetizationOn,
-  People, Business, History, Label, Logout
-} from '@mui/icons-material';
-import AccountCircle from '@mui/icons-material/AccountCircle';
-import { Outlet, useNavigate, useLocation } from 'react-router-dom'; // ⬅️ useLocation
-import { AuthContext } from '../contexts/AuthContext';
-import { useLoading } from '../contexts/LoadingContext';
+import MenuIcon from "@mui/icons-material/Menu";
+import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import DarkModeIcon from "@mui/icons-material/DarkMode";
+import LightModeIcon from "@mui/icons-material/LightMode";
+import Inventory2Icon from "@mui/icons-material/Inventory2";
+import SellIcon from "@mui/icons-material/Sell";
+import LocalShippingIcon from "@mui/icons-material/LocalShipping";
+import AssignmentIcon from "@mui/icons-material/Assignment";
+import CategoryIcon from "@mui/icons-material/Category";
+import PeopleIcon from "@mui/icons-material/People";
+import StoreIcon from "@mui/icons-material/Store";
+import BrandingWatermarkIcon from "@mui/icons-material/BrandingWatermark";
+import BarChartIcon from "@mui/icons-material/BarChart";
+import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
+import LogoutIcon from "@mui/icons-material/Logout";
+import DirectionsTransitIcon from "@mui/icons-material/DirectionsTransit"; // 👈 nuevo ícono
 
-const drawerWidth = 240;
+const DRAWER_WIDTH = 240;
+const MINI_WIDTH = 72;
+const Offset = styled("div")(({ theme }) => theme.mixins.toolbar);
 
-export default function Layout() {
+const DrawerPaper = styled("div")(({ theme, open }) => ({
+  position: "relative",
+  whiteSpace: "nowrap",
+  width: open ? DRAWER_WIDTH : MINI_WIDTH,
+  transition: theme.transitions.create("width", {
+    easing: theme.transitions.easing.sharp,
+    duration: theme.transitions.duration.enteringScreen,
+  }),
+  boxSizing: "border-box",
+  overflowX: "hidden",
+  ...(open
+    ? {}
+    : {
+        transition: theme.transitions.create("width", {
+          easing: theme.transitions.easing.sharp,
+          duration: theme.transitions.duration.leavingScreen,
+        }),
+      }),
+}));
+
+const Shell = styled("div")(({ theme, open }) => ({
+  display: "flex",
+  height: "100vh",
+  overflow: "hidden",
+  background: theme.palette.background.default,
+  "& .content": {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    padding: theme.spacing(2),
+    marginLeft: open ? DRAWER_WIDTH : MINI_WIDTH,
+    transition: theme.transitions.create("margin-left", {
+      duration: theme.transitions.duration.standard,
+    }),
+    [theme.breakpoints.down("md")]: { marginLeft: 0 },
+    overflow: "hidden",
+    height: "100vh",
+    maxWidth: 1600,
+  },
+}));
+
+// 🧭 Navegación lateral (Drawer)
+const items = [
+  { to: "/productos", label: "Productos", icon: <Inventory2Icon /> },
+  { to: "/ventas", label: "Ventas", icon: <SellIcon /> },
+  { to: "/ordenes_compra", label: "Órdenes de compra", icon: <AssignmentIcon /> },
+  { to: "/categorias", label: "Categorías", icon: <CategoryIcon /> },
+  { to: "/clientes", label: "Clientes", icon: <PeopleIcon /> },
+  { to: "/proveedores", label: "Proveedores", icon: <StoreIcon /> },
+  { to: "/marcas", label: "Marcas", icon: <BrandingWatermarkIcon /> },
+  { to: "/transacciones", label: "Transacciones", icon: <SwapHorizIcon /> },
+  { to: "/transportistas", label: "Transportistas", icon: <LocalShippingIcon /> },
+
+  // 👇 NUEVA SECCIÓN PARA ENCOMENDISTAS
+  { to: "/encomendistas", label: "Encomendistas", icon: <DirectionsTransitIcon /> },
+
+  { to: "/reportes", label: "Reportes", icon: <BarChartIcon /> },
+];
+
+export default function Layout({ toggleTheme, mode }) {
+  const theme = useTheme();
   const navigate = useNavigate();
-  const location = useLocation();                 // ⬅️ ruta actual
-  const { start } = useLoading();
-  const { user } = useContext(AuthContext);
+  const location = useLocation();
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+  const [open, setOpen] = React.useState(true);
+  const [mobileOpen, setMobileOpen] = React.useState(false);
+
+  const handleToggleDrawer = () => setOpen((o) => !o);
+  const handleMobileToggle = () => setMobileOpen((m) => !m);
+
+  React.useEffect(() => {
+    if (mobileOpen) setMobileOpen(false);
+  }, [location.pathname]);
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    navigate('/login', { replace: true });
+    localStorage.removeItem("token");
+    navigate("/login");
   };
 
-  const [anchorEl, setAnchorEl] = useState(null);
-  const open = Boolean(anchorEl);
-  const handleMenuOpen = (e) => setAnchorEl(e.currentTarget);
-  const handleMenuClose = () => setAnchorEl(null);
+  const AppTopBar = (
+    <AppBar
+      position="fixed"
+      elevation={0}
+      sx={{
+        backdropFilter: "blur(8px)",
+        backgroundColor: (t) => alpha(t.palette.background.paper, 0.8),
+        borderBottom: (t) => `1px solid ${alpha(t.palette.divider, 0.3)}`,
+        ml: { md: open ? `${DRAWER_WIDTH}px` : `${MINI_WIDTH}px` },
+        width: { md: open ? `calc(100% - ${DRAWER_WIDTH}px)` : `calc(100% - ${MINI_WIDTH}px)` },
+      }}
+    >
+      <Toolbar sx={{ gap: 1 }}>
+        <IconButton
+          color="inherit"
+          edge="start"
+          onClick={isMobile ? handleMobileToggle : handleToggleDrawer}
+          sx={{ mr: 1, display: { md: "none" } }}
+        >
+          <MenuIcon />
+        </IconButton>
 
-  // ⬅️ Navegar SOLO si cambia la ruta
-  const handleNav = (path) => {
-    if (location.pathname === path) return; // ya estoy ahí: no hago nada (evita overlay colgado)
-    start();
-    navigate(path);
-  };
+        <Typography variant="h6" noWrap sx={{ flexGrow: 1, fontWeight: 700 }}>
+          Sistema de Inventario
+        </Typography>
 
-  // helper para marcar activo en el menú
-  const isActive = (path) => location.pathname.startsWith(path);
+        <Tooltip title={mode === "light" ? "Modo oscuro" : "Modo claro"}>
+          <IconButton color="inherit" onClick={toggleTheme}>
+            {mode === "light" ? <DarkModeIcon /> : <LightModeIcon />}
+          </IconButton>
+        </Tooltip>
 
-  return (
-    <Box sx={{ display: 'flex' }}>
-      <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
-        <Toolbar sx={{ display: 'flex', justifyContent: 'space-between' }}>
-          <Typography variant="h6" noWrap component="div">
-            Sistema de Inventario
-          </Typography>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            {user && (
-              <Typography variant="body2" sx={{ mr: 1 }}>
-                {user.username || user.nombre || 'Usuario'}
-              </Typography>
-            )}
-            <IconButton size="large" edge="end" color="inherit" onClick={handleMenuOpen}>
-              <AccountCircle />
-            </IconButton>
-            <Menu
-              anchorEl={anchorEl}
-              open={open}
-              onClose={handleMenuClose}
-              anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-              transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-            >
-              <MenuItem
-                onClick={() => {
-                  handleMenuClose();
-                  handleLogout();
-                }}
-              >
-                <ListItemIcon sx={{ minWidth: 32 }}>
-                  <Logout fontSize="small" />
-                </ListItemIcon>
-                <ListItemText primary="Cerrar sesión" />
-              </MenuItem>
-            </Menu>
-          </Box>
-        </Toolbar>
-      </AppBar>
+        <Tooltip title="Cuenta">
+          <IconButton onClick={() => navigate("/usuarios")}>
+            <Avatar sx={{ width: 32, height: 32 }}>A</Avatar>
+          </IconButton>
+        </Tooltip>
 
-      <Drawer
-        variant="permanent"
+        <Tooltip title="Cerrar sesión">
+          <IconButton color="inherit" onClick={handleLogout}>
+            <LogoutIcon />
+          </IconButton>
+        </Tooltip>
+      </Toolbar>
+    </AppBar>
+  );
+
+  const DrawerContent = (
+    <DrawerPaper open={open}>
+      <Toolbar
+        disableGutters
         sx={{
-          width: drawerWidth, flexShrink: 0,
-          '& .MuiDrawer-paper': { width: drawerWidth, boxSizing: 'border-box' }
+          px: 1,
+          height: 64,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: open ? "space-between" : "center",
         }}
       >
-        <Toolbar />
-        <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-          <List sx={{ flexGrow: 1 }}>
-            
+        {open ? (
+          <Typography sx={{ fontWeight: 700, ml: 1 }}>Inventario</Typography>
+        ) : (
+          <Inventory2Icon />
+        )}
+        <IconButton onClick={handleToggleDrawer} sx={{ display: { xs: "none", md: "inline-flex" } }}>
+          {theme.direction === "rtl" ? <ChevronRightIcon /> : <ChevronLeftIcon />}
+        </IconButton>
+      </Toolbar>
 
-
-
-
-
-
+      <Divider />
+      <List sx={{ py: 1, flexGrow: 1 }}>
+        {items.map((item) => {
+          const active = location.pathname.startsWith(item.to);
+          const button = (
             <ListItemButton
-              onClick={() => handleNav('/productos')}
-              selected={isActive('/productos')}
+              key={item.to}
+              component={NavLink}
+              to={item.to}
+              selected={active}
+              sx={{
+                mx: 1,
+                borderRadius: 2,
+                "&.Mui-selected": {
+                  bgcolor: (t) =>
+                    alpha(t.palette.primary.main, t.palette.mode === "light" ? 0.12 : 0.24),
+                },
+              }}
             >
-              <ListItemIcon><Inventory2 /></ListItemIcon>
-              <ListItemText primary="Productos" />
+              <ListItemIcon sx={{ minWidth: 40 }}>{item.icon}</ListItemIcon>
+              {open && <ListItemText primary={item.label} />}
             </ListItemButton>
+          );
+          return open ? (
+            button
+          ) : (
+            <Tooltip key={item.to} title={item.label} placement="right">
+              {button}
+            </Tooltip>
+          );
+        })}
+      </List>
 
+      <Divider />
+      <ListItemButton
+        onClick={handleLogout}
+        sx={{
+          mx: 1,
+          my: 1,
+          borderRadius: 2,
+          color: "error.main",
+        }}
+      >
+        <ListItemIcon>
+          <LogoutIcon color="error" />
+        </ListItemIcon>
+        {open && <ListItemText primary="Cerrar sesión" />}
+      </ListItemButton>
+    </DrawerPaper>
+  );
 
+  return (
+    <Shell open={!isMobile && open}>
+      <CssBaseline />
+      {AppTopBar}
 
-  <ListItemButton
-              onClick={() => handleNav('/transportistas')}
-              selected={isActive('/transportistas')}
-            >
-              <ListItemIcon><Inventory2 /></ListItemIcon>
-              <ListItemText primary="transportistas" />
-            </ListItemButton>
+      {/* Drawer fijo en desktop */}
+      <Box
+        component={Paper}
+        elevation={4}
+        square
+        sx={{
+          display: { xs: "none", md: "block" },
+          position: "fixed",
+          left: 0,
+          top: 0,
+          height: "100vh",
+          zIndex: (t) => t.zIndex.drawer,
+        }}
+      >
+        {DrawerContent}
+      </Box>
 
-
-
-
-            <ListItemButton
-              onClick={() => handleNav('/ordenes_compra')}
-              selected={isActive('/ordenes_compra')}
-            >
-              <ListItemIcon><ShoppingCart /></ListItemIcon>
-              <ListItemText primary="Órdenes de compra" />
-            </ListItemButton>
-
-            <ListItemButton
-              onClick={() => handleNav('/categorias')}
-              selected={isActive('/categorias')}
-            >
-              <ListItemIcon><Category /></ListItemIcon>
-              <ListItemText primary="Categorías" />
-            </ListItemButton>
-
-            <ListItemButton
-              onClick={() => handleNav('/ventas')}
-              selected={isActive('/ventas')}
-            >
-              <ListItemIcon><MonetizationOn /></ListItemIcon>
-              <ListItemText primary="Ventas" />
-            </ListItemButton>
-
-            <ListItemButton
-              onClick={() => handleNav('/clientes')}
-              selected={isActive('/clientes')}
-            >
-              <ListItemIcon><People /></ListItemIcon>
-              <ListItemText primary="Clientes" />
-            </ListItemButton>
-
-            <ListItemButton
-              onClick={() => handleNav('/proveedores')}
-              selected={isActive('/proveedores')}
-            >
-              <ListItemIcon><Business /></ListItemIcon>
-              <ListItemText primary="Proveedores" />
-            </ListItemButton>
-
-            <ListItemButton
-              onClick={() => handleNav('/transacciones')}
-              selected={isActive('/transacciones')}
-            >
-              <ListItemIcon><History /></ListItemIcon>
-              <ListItemText primary="Historial" />
-            </ListItemButton>
-
-            <ListItemButton
-              onClick={() => handleNav('/marcas')}
-              selected={isActive('/marcas')}
-            >
-              
-              <ListItemIcon><Label /></ListItemIcon>
-              <ListItemText primary="Marcas" />
-            </ListItemButton>
-
-            {(user?.rol === 'admin' || user?.rol_id === 1) && (
-              <ListItemButton
-                onClick={() => handleNav('/usuarios')}
-                selected={isActive('/usuarios')}
-              >
-                <ListItemIcon><People /></ListItemIcon>
-                <ListItemText primary="Usuarios" />
-              </ListItemButton>
-            )}
-  {/* REPORTES */}
-  <ListItemButton
-    onClick={() => handleNav('/reportes')}
-   selected={isActive('/reportes')}
-  >
-    <ListItemIcon><History /></ListItemIcon>
-   <ListItemText primary="Reportes" />
-  </ListItemButton>
-
-
-
-
-          </List>
-
-          <Divider />
-          <List>
-            <ListItemButton onClick={handleLogout}>
-              <ListItemIcon><Logout /></ListItemIcon>
-              <ListItemText primary="Cerrar sesión" />
-            </ListItemButton>
-          </List>
-        </Box>
+      {/* Drawer móvil */}
+      <Drawer
+        variant="temporary"
+        open={mobileOpen}
+        onClose={handleMobileToggle}
+        ModalProps={{ keepMounted: true }}
+        sx={{
+          display: { xs: "block", md: "none" },
+          "& .MuiDrawer-paper": { width: DRAWER_WIDTH },
+        }}
+      >
+        <Box sx={{ width: DRAWER_WIDTH }}>{DrawerContent}</Box>
       </Drawer>
 
-      <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
-        <Toolbar />
+      {/* Contenido principal */}
+      <Box className="content" component="main">
+        <Offset />
         <Outlet />
       </Box>
-    </Box>
+    </Shell>
   );
 }

@@ -23,12 +23,17 @@ exports.salesReport = async ({ page=1, pageSize=50, from, to, estado='pagada', t
   ]);
   return { rows, total, page, pageSize };
 };
-
 exports.salesReportCsv = async ({ from, to, estado='pagada', tz }) => {
   const rows = await Repo.findSales({ limit: 200000, offset: 0, from, to, estado, tz });
-  const headers = ['id','codigo','fecha','total_venta','cliente','usuario','metodo_pago','estado_envio','estado_pago','estado_venta'];
+  const headers = [
+    'id','codigo','fecha','total_venta',
+    'cliente','usuario','metodo_pago',
+    'estado_envio','estado_pago','estado_venta',
+    'ganancia_neta'
+  ];
   return toCsv(rows, headers);
 };
+
 
 /* ---- KPIs / agrupados ---- */
 exports.kpis = (p) => Repo.findKpis(p);

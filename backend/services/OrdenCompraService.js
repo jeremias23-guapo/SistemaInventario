@@ -7,18 +7,28 @@ function sortIds(ids) {
 }
 
 class OrdenCompraService {
+  /**
+   * Prepara las líneas y calcula subtotales
+   * - Impuesto y descuento se tratan como porcentaje
+   * - Libraje ahora se multiplica por la cantidad (libraje por unidad)
+   */
   static _prepararLineas(lineas) {
     let totalOrden = 0;
-    const lineasConSub = lineas.map(ln => {
-      const cantidad = Number(ln.cantidad);
-      const pu = parseFloat(ln.precio_unitario);
-      const imp = parseFloat(ln.impuesto) || 0;
-      const lib = parseFloat(ln.libraje) || 0;
-      const desc = parseFloat(ln.descuento) || 0;
-      const subtotal = cantidad * pu + imp + lib - desc;
+    const lineasConSub = lineas.map((ln) => {
+      const cantidad = Number(ln.cantidad) || 0;
+      const pu = parseFloat(ln.precio_unitario) || 0;
+      const imp = parseFloat(ln.impuesto) || 0; // porcentaje (%)
+      const lib = parseFloat(ln.libraje) || 0;  // libraje por unidad
+      const desc = parseFloat(ln.descuento) || 0; // porcentaje (%)
+
+      const base = cantidad * pu;
+      // 🔹 Se ajusta el libraje para que sea por unidad
+      const subtotal = base + base * (imp / 100) + (lib * cantidad) - base * (desc / 100);
+
       totalOrden += subtotal;
       return { ...ln, cantidad, subtotal };
     });
+
     return { totalOrden, lineasConSub };
   }
 
@@ -116,22 +126,23 @@ class OrdenCompraService {
   static async getById(id) {
     const cab = await OrdenCompraRepo.fetchCabecera(pool, id);
     if (!cab) throw new Error('Orden no encontrada');
-     const detalle = await OrdenCompraRepo.fetchDetalle(pool, id);
-  const lineas = detalle.map(r => ({
-   id: r.id,
-   producto: {      id: r.producto_id,
-     nombre: r.producto_nombre,
-     imagen_url: r.producto_imagen_url
-   },
-   cantidad: r.cantidad,
-  cantidad_restante: r.cantidad_restante,
-    precio_unitario: r.precio_unitario,
-    impuesto: r.impuesto,
-    libraje: r.libraje,
-    descuento: r.descuento,
-    subtotal: r.subtotal
-  }));
-  return { ...cab, lineas };
+    const detalle = await OrdenCompraRepo.fetchDetalle(pool, id);
+    const lineas = detalle.map(r => ({
+      id: r.id,
+      producto: {
+        id: r.producto_id,
+        nombre: r.producto_nombre,
+        imagen_url: r.producto_imagen_url
+      },
+      cantidad: r.cantidad,
+      cantidad_restante: r.cantidad_restante,
+      precio_unitario: r.precio_unitario,
+      impuesto: r.impuesto,
+      libraje: r.libraje,
+      descuento: r.descuento,
+      subtotal: r.subtotal
+    }));
+    return { ...cab, lineas };
   }
 
   static async update(id, data) {

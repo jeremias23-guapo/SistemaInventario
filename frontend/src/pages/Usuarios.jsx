@@ -47,7 +47,7 @@ export default function Usuarios() {
     <Container maxWidth="lg" sx={{ mt: 4 }}>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4">Usuarios</Typography>
-        {user?.rol === 1 && (
+        {user?.rol_id === 1 && (
           <Button
             component={RouterLink}
             to="/usuarios/nuevo"

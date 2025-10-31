@@ -1,22 +1,33 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useContext } from 'react';
 import {
-  Container, Button, Stack, Typography, Paper, TextField, TablePagination
+  Container,
+  Button,
+  Stack,
+  Typography,
+  Paper,
+  TextField,
+  TablePagination
 } from '@mui/material';
 import DataTable from '../components/DataTable';
-import { fetchOrdenesCompra, deleteOrdenCompra, searchOrdenesCompra } from '../api/ordenes_compra';
+import {
+  fetchOrdenesCompra,
+  deleteOrdenCompra,
+  searchOrdenesCompra
+} from '../api/ordenes_compra';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useLoading } from '../contexts/LoadingContext';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { useToast } from '../contexts/ToastContext';
 import DateField from '../components/DateField';
+import { AuthContext } from '../contexts/AuthContext'; // 👈 para saber el rol
 
 export default function OrdenesCompra() {
+  const { user } = useContext(AuthContext); // 👈 obtener el usuario actual
   const [ordenes, setOrdenes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [codigo, setCodigo] = useState('');
-  const [fecha, setFecha]   = useState('');
+  const [fecha, setFecha] = useState('');
 
-  // paginación (UI 0-based; API 1-based)
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [total, setTotal] = useState(0);
@@ -44,7 +55,6 @@ export default function OrdenesCompra() {
     setTotal(Number(p.total || arr.length || 0));
   };
 
-  // === funciones que aceptan page/pageSize explícitos ===
   const load = async (apiPage, size) => {
     setLoading(true);
     try {
@@ -73,7 +83,6 @@ export default function OrdenesCompra() {
     }
   };
 
-  // al montar
   useEffect(() => {
     (async () => {
       try { await load(1, pageSize); }
@@ -93,7 +102,6 @@ export default function OrdenesCompra() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // filtros con debounce — pedir siempre page=1 con pageSize actual
   useEffect(() => {
     const id = setTimeout(() => {
       setPage(0);
@@ -130,10 +138,9 @@ export default function OrdenesCompra() {
   ];
 
   const goToNuevo = () => { start(); nav('/ordenes_compra/nuevo'); };
-  const goToVer   = (id) => { start(); nav(`/ordenes_compra/detalle/${id}`); };
-  const goToEdit  = (id) => { start(); nav(`/ordenes_compra/editar/${id}`); };
+  const goToVer = (id) => { start(); nav(`/ordenes_compra/detalle/${id}`); };
+  const goToEdit = (id) => { start(); nav(`/ordenes_compra/editar/${id}`); };
 
-  // borrar con confirm global
   const onDelete = async (row) => {
     const ok = await confirm({
       title: 'Eliminar orden',
@@ -148,7 +155,6 @@ export default function OrdenesCompra() {
     try {
       await deleteOrdenCompra(row.id);
 
-      // si la página queda vacía, retrocede una
       let targetPage = page;
       if (ordenes.length === 1 && page > 0) {
         targetPage = page - 1;
@@ -184,10 +190,35 @@ export default function OrdenesCompra() {
     else await load(apiPage, newSize);
   };
 
+  // 🔐 Control de acciones según rol y estado
+  const actionGuard = (row) => {
+    const estado = row.estado?.toLowerCase() || '';
+
+    // 👑 Admin puede todo
+    if (user?.rol_id === 1) {
+      return { view: true, edit: true, delete: true };
+    }
+
+    // 👤 Usuario (rol 2)
+    if (user?.rol_id === 2) {
+      if (estado === 'pendiente') {
+        return { view: true, edit: true, delete: true };
+      }
+      if (estado === 'recibida' || estado === 'cancelada') {
+        return { view: true, edit: false, delete: false };
+      }
+    }
+
+    // por defecto solo ver
+    return { view: true };
+  };
+
   return (
     <Container sx={{ mt: 4 }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
         <Typography variant="h5">Órdenes de Compra</Typography>
+
+        {/* ✅ Botón visible para todos (admin y usuario) */}
         <Button variant="contained" onClick={goToNuevo}>
           Nueva Orden
         </Button>
@@ -227,6 +258,8 @@ export default function OrdenesCompra() {
           onView={row => goToVer(row.id)}
           onEdit={row => goToEdit(row.id)}
           onDelete={onDelete}
+          actionGuard={actionGuard} // 👈 aquí se aplican los permisos
+          maxHeight={window.innerHeight - 300}
         />
         <TablePagination
           component="div"

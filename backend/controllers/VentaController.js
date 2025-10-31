@@ -73,3 +73,113 @@ exports.remove = async (req, res, next) => {
     res.status(204).end();
   } catch (err) { next(err); }
 };
+exports.quickUpdateEstado = async (req, res, next) => {
+  try {
+    const id = req.params.id;
+    const { estado_pago, estado_envio } = req.body;
+
+    if (!estado_pago && !estado_envio) {
+      return res.status(400).json({ error: 'Debe especificar estado_pago o estado_envio' });
+    }
+
+    const fields = [];
+    const values = [];
+
+    if (estado_pago) {
+      fields.push('estado_pago = ?');
+      values.push(estado_pago);
+    }
+    if (estado_envio) {
+      fields.push('estado_envio = ?');
+      values.push(estado_envio);
+    }
+
+    const sql = `UPDATE ventas SET ${fields.join(', ')} WHERE id = ?`;
+    values.push(id);
+
+    const [result] = await pool.query(sql, values);
+    if (!result.affectedRows) return res.status(404).json({ error: 'Venta no encontrada' });
+
+    // ✅ Usa la función finalizeIfCompleted ahora correctamente exportada
+    const VentaService = require('../services/VentaService');
+    await VentaService.finalizeIfCompleted(pool, id);
+
+    res.json({ id, estado_pago, estado_envio });
+  } catch (err) {
+    next(err);
+  }
+};
+
+exports.quickUpdateEstado = async (req, res, next) => {
+  try {
+    const id = req.params.id;
+    const { estado_pago, estado_envio } = req.body;
+
+    if (!estado_pago && !estado_envio) {
+      return res.status(400).json({ error: 'Debe especificar estado_pago o estado_envio' });
+    }
+
+    const fields = [];
+    const values = [];
+    if (estado_pago) {
+      fields.push('estado_pago = ?');
+      values.push(estado_pago);
+    }
+    if (estado_envio) {
+      fields.push('estado_envio = ?');
+      values.push(estado_envio);
+    }
+
+    const sql = `UPDATE ventas SET ${fields.join(', ')} WHERE id = ?`;
+    values.push(id);
+
+    const [result] = await pool.query(sql, values);
+    if (!result.affectedRows)
+      return res.status(404).json({ error: 'Venta no encontrada' });
+
+    // ✅ Ajustar stock si pasa a "pagada"
+    if (estado_pago && estado_pago.toLowerCase() === 'pagada') {
+      const conn = await pool.getConnection();
+      try {
+        await conn.beginTransaction();
+
+        const VentaRepo = require('../repositories/VentaRepo');
+        const ProductoRepo = require('../repositories/ProductoRepo');
+
+        // Obtener las líneas de la venta
+        const lineas = await VentaRepo.fetchLineas(id);
+
+        for (const ln of lineas) {
+          await ProductoRepo.adjustStock(conn, ln.producto_id, -ln.cantidad);
+        }
+
+        await conn.commit();
+        conn.release();
+      } catch (err) {
+        await conn.rollback();
+        conn.release();
+        throw err;
+      }
+    }
+
+    // ✅ Verificar si debe marcarse como "finalizada"
+    const VentaService = require('../services/VentaService');
+    await VentaService.finalizeIfCompleted(pool, id);
+
+    res.json({
+      id,
+      estado_pago,
+      estado_envio,
+      mensaje:
+        estado_pago?.toLowerCase() === 'pagada'
+          ? 'Venta marcada como pagada y stock actualizado'
+          : 'Estado actualizado correctamente',
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+
+
+

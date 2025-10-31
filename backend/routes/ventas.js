@@ -12,6 +12,7 @@ router.get('/',    ctrl.listAll);
 router.get('/:id', ctrl.getOne);
 router.post('/',   ctrl.create);          // req.user.sub disponible
 router.put('/:id', ctrl.update);          // req.user.sub disponible
+router.patch('/:id/estado', ctrl.quickUpdateEstado); // 👈 NUEVO ENDPOINT
 router.delete('/:id', ctrl.remove);       // req.user.sub disponible
 router.post('/:id/cancelar', ctrl.cancelarVenta);
 

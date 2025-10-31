@@ -1,6 +1,6 @@
-// frontend/src/pages/Categorias.jsx
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import {
+  Box,
   Container,
   Button,
   Stack,
@@ -14,9 +14,18 @@ import {
   Paper,
   TablePagination,
   TextField,
-  InputAdornment
+  InputAdornment,
+  useMediaQuery,
 } from '@mui/material';
-import { ExpandMore, ExpandLess, Edit, Delete, Search, Clear } from '@mui/icons-material';
+import {
+  ExpandMore,
+  ExpandLess,
+  Edit,
+  Delete,
+  Search,
+  Clear,
+} from '@mui/icons-material';
+import { useTheme } from '@mui/material/styles';
 import { fetchCategorias, deleteCategoria } from '../api/categorias';
 import { useNavigate } from 'react-router-dom';
 import { useLoading } from '../contexts/LoadingContext';
@@ -26,7 +35,7 @@ import { useToast } from '../contexts/ToastContext';
 export default function Categorias() {
   const [data, setData] = useState([]);
   const [openMap, setOpenMap] = useState({});
-  const [page, setPage] = useState(0);           // 0-based para MUI
+  const [page, setPage] = useState(0); // 0-based para MUI
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [totalParents, setTotalParents] = useState(0);
   const [q, setQ] = useState('');
@@ -38,6 +47,11 @@ export default function Categorias() {
   const confirm = useConfirm();
   const { showToast } = useToast();
 
+  const theme = useTheme();
+  const isMobileSm = useMediaQuery(theme.breakpoints.down('sm'));
+  const appBarH = isMobileSm ? 56 : 64;
+
+  // ============ Carga de datos ============
   const refresh = async (p = page, l = rowsPerPage, query = q) => {
     try {
       const params = { page: p + 1, limit: l };
@@ -65,7 +79,7 @@ export default function Categorias() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Debounce del input de búsqueda
+  // ============ Búsqueda con debounce ============
   const onChangeSearch = (e) => {
     const val = e.target.value;
     setQInput(val);
@@ -73,7 +87,7 @@ export default function Categorias() {
     debounceRef.current = setTimeout(async () => {
       const nextQ = val.trim();
       setQ(nextQ);
-      setPage(0);               // reset paginado al buscar
+      setPage(0);
       start();
       try {
         await refresh(0, rowsPerPage, nextQ);
@@ -95,7 +109,7 @@ export default function Categorias() {
     }
   };
 
-  // Filtramos padres e hijos (el backend ya devuelve página de padres + hijos relevantes)
+  // ============ Derivaciones ============
   const padres = useMemo(() => data.filter((c) => c.parent_id === null), [data]);
 
   const hijosByParent = useMemo(() => {
@@ -113,6 +127,7 @@ export default function Categorias() {
     setOpenMap((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
+  // ============ CRUD ============
   const handleBorrar = async (id) => {
     const ok = await confirm({
       title: 'Eliminar categoría',
@@ -129,7 +144,7 @@ export default function Categorias() {
       await deleteCategoria(id);
       showToast({ message: 'Categoría eliminada', severity: 'success' });
 
-      const esPadre = data.find(d => d.id === id && d.parent_id === null);
+      const esPadre = data.find((d) => d.id === id && d.parent_id === null);
       const newTotalParents = Math.max(totalParents - (esPadre ? 1 : 0), 0);
       const maxPageIdx = Math.max(Math.ceil(newTotalParents / rowsPerPage) - 1, 0);
       const nextPage = Math.min(page, maxPageIdx);
@@ -165,142 +180,184 @@ export default function Categorias() {
     }
   };
 
+  // ============ Render ============
   return (
-    <Container sx={{ mt: 4 }}>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
-        <Typography variant="h5" component="h1">
-          Categorías
-        </Typography>
-        <Button
-          variant="contained"
-          onClick={() => {
-            start();
-            nav('/categorias/nuevo');
+    <Box
+      sx={{
+        flex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        p: 2,
+        overflow: 'hidden',
+        height: `calc(100vh - ${appBarH}px)`,
+      }}
+    >
+      <Container
+        sx={{
+          flex: 1,
+          maxWidth: 'lg !important',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Header */}
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          justifyContent="space-between"
+          alignItems="center"
+          mb={2}
+        >
+          <Typography variant="h5" component="h1" fontWeight={600}>
+            Categorías
+          </Typography>
+          <Button
+            variant="contained"
+            onClick={() => {
+              start();
+              nav('/categorias/nuevo');
+            }}
+            sx={{
+              position: { xs: 'fixed', md: 'static' },
+              bottom: { xs: 16, md: 'auto' },
+              right: { xs: 16, md: 'auto' },
+              zIndex: (t) => t.zIndex.appBar + 2,
+            }}
+          >
+            Nueva Categoría
+          </Button>
+        </Stack>
+
+        {/* Búsqueda */}
+        <Paper sx={{ mb: 2, p: 2 }}>
+          <TextField
+            fullWidth
+            placeholder="Buscar por nombre de categoría o subcategoría…"
+            value={qInput}
+            onChange={onChangeSearch}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search />
+                </InputAdornment>
+              ),
+              endAdornment: qInput ? (
+                <InputAdornment position="end">
+                  <IconButton
+                    aria-label="limpiar búsqueda"
+                    onClick={clearSearch}
+                    size="small"
+                  >
+                    <Clear />
+                  </IconButton>
+                </InputAdornment>
+              ) : null,
+            }}
+          />
+        </Paper>
+
+        {/* Tabla principal */}
+        <Paper
+          sx={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
           }}
         >
-          Nueva Categoría
-        </Button>
-      </Stack>
-
-      <Paper sx={{ mb: 2, p: 2 }}>
-        <TextField
-          fullWidth
-          placeholder="Buscar por nombre de categoría o subcategoría…"
-          value={qInput}
-          onChange={onChangeSearch}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <Search />
-              </InputAdornment>
-            ),
-            endAdornment: qInput ? (
-              <InputAdornment position="end">
-                <IconButton aria-label="limpiar búsqueda" onClick={clearSearch} size="small">
-                  <Clear />
-                </IconButton>
-              </InputAdornment>
-            ) : null
-          }}
-        />
-      </Paper>
-
-      <Paper>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell style={{ width: '50px' }} aria-label="expand" />
-              <TableCell style={{ width: '100px' }}>ID</TableCell>
-              <TableCell>Nombre</TableCell>
-              <TableCell align="right">Acciones</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {padres.map((padre) => {
-              const hijos = hijosByParent[padre.id] || [];
-              const isOpen = Boolean(openMap[padre.id]);
-
-              return (
-                <React.Fragment key={padre.id}>
-                  {/* Fila del Padre */}
-                  <TableRow sx={{ '& > *': { borderBottom: 'unset' } }}>
-                    <TableCell>
-                      {hijos.length > 0 && (
-                        <IconButton size="small" onClick={() => toggle(padre.id)}>
-                          {isOpen ? <ExpandLess /> : <ExpandMore />}
-                        </IconButton>
-                      )}
-                    </TableCell>
-                    <TableCell>{padre.id}</TableCell>
-                    <TableCell component="th" scope="row">
-                      {padre.nombre}
-                    </TableCell>
-                    <TableCell align="right">
-                      <IconButton
-                        aria-label="editar"
-                        onClick={() => {
-                          start();
-                          nav(`/categorias/editar/${padre.id}`);
-                        }}
-                      >
-                        <Edit />
-                      </IconButton>
-                      <IconButton aria-label="eliminar" onClick={() => handleBorrar(padre.id)}>
-                        <Delete />
-                      </IconButton>
-                    </TableCell>
-                  </TableRow>
-
-                  {/* Filas de los Hijos (cuando se expande) */}
-                  {isOpen &&
-                    hijos.map((hijo) => (
-                      <TableRow key={hijo.id}>
-                        <TableCell />
-                        <TableCell>{hijo.id}</TableCell>
-                        <TableCell component="th" scope="row" sx={{ pl: 5 }}>
-                          − {hijo.nombre}
+          <Box sx={{ flex: 1, overflow: 'auto' }}>
+            <Table stickyHeader size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell style={{ width: '50px' }} />
+                  <TableCell style={{ width: '100px' }}>ID</TableCell>
+                  <TableCell>Nombre</TableCell>
+                  <TableCell align="right">Acciones</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {padres.map((padre) => {
+                  const hijos = hijosByParent[padre.id] || [];
+                  const isOpen = Boolean(openMap[padre.id]);
+                  return (
+                    <React.Fragment key={padre.id}>
+                      <TableRow hover>
+                        <TableCell>
+                          {hijos.length > 0 && (
+                            <IconButton size="small" onClick={() => toggle(padre.id)}>
+                              {isOpen ? <ExpandLess /> : <ExpandMore />}
+                            </IconButton>
+                          )}
                         </TableCell>
+                        <TableCell>{padre.id}</TableCell>
+                        <TableCell>{padre.nombre}</TableCell>
                         <TableCell align="right">
                           <IconButton
-                            size="small"
-                            aria-label="editar subcategoría"
+                            aria-label="editar"
                             onClick={() => {
                               start();
-                              nav(`/categorias/editar/${hijo.id}`);
+                              nav(`/categorias/editar/${padre.id}`);
                             }}
                           >
-                            <Edit fontSize="small" />
+                            <Edit />
                           </IconButton>
                           <IconButton
-                            size="small"
-                            aria-label="eliminar subcategoría"
-                            onClick={() => handleBorrar(hijo.id)}
+                            aria-label="eliminar"
+                            onClick={() => handleBorrar(padre.id)}
                           >
-                            <Delete fontSize="small" />
+                            <Delete />
                           </IconButton>
                         </TableCell>
                       </TableRow>
-                    ))}
-                </React.Fragment>
-              );
-            })}
-          </TableBody>
-        </Table>
 
-        <TablePagination
-          component="div"
-          count={totalParents}
-          page={page}
-          onPageChange={handleChangePage}
-          rowsPerPage={rowsPerPage}
-          onRowsPerPageChange={handleChangeRowsPerPage}
-          rowsPerPageOptions={[5, 10, 25, 50]}
-          labelRowsPerPage="Padres por página"
-          labelDisplayedRows={({ from, to, count }) =>
-            `${from}-${to} de ${count !== -1 ? count : `más de ${to}`}`
-          }
-        />
-      </Paper>
-    </Container>
+                      {/* Subcategorías */}
+                      {isOpen &&
+                        hijos.map((hijo) => (
+                          <TableRow key={hijo.id} hover>
+                            <TableCell />
+                            <TableCell>{hijo.id}</TableCell>
+                            <TableCell sx={{ pl: 5 }}>– {hijo.nombre}</TableCell>
+                            <TableCell align="right">
+                              <IconButton
+                                size="small"
+                                onClick={() => {
+                                  start();
+                                  nav(`/categorias/editar/${hijo.id}`);
+                                }}
+                              >
+                                <Edit fontSize="small" />
+                              </IconButton>
+                              <IconButton
+                                size="small"
+                                onClick={() => handleBorrar(hijo.id)}
+                              >
+                                <Delete fontSize="small" />
+                              </IconButton>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                    </React.Fragment>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </Box>
+
+          <TablePagination
+            component="div"
+            count={totalParents}
+            page={page}
+            onPageChange={handleChangePage}
+            rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={handleChangeRowsPerPage}
+            rowsPerPageOptions={[5, 10, 25, 50]}
+            labelRowsPerPage="Padres por página"
+            labelDisplayedRows={({ from, to, count }) =>
+              `${from}-${to} de ${count !== -1 ? count : `más de ${to}`}`
+            }
+          />
+        </Paper>
+      </Container>
+    </Box>
   );
 }

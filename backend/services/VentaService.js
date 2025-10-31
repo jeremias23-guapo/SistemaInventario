@@ -31,16 +31,16 @@ class VentaService {
 
       const codigo = await VentaRepo.generarCodigo(conn, true); // con ceros
 
-      // 1) Totales (BRUTO)
-      let totalVenta = 0;
-      const lineas = (data.lineas || []).map(ln => {
-        const cantidad = +ln.cantidad || 0;
-        const pu       = +ln.precio_unitario || 0;
-        const desc     = +ln.descuento || 0;
-        const subtotal = cantidad * pu - desc;
-        totalVenta += subtotal;
-        return { ...ln, cantidad, pu, subtotal };
-      });
+     // 1) Totales (BRUTO)
+let totalVenta = 0;
+const lineas = (data.lineas || []).map(ln => {
+  const cantidad = +ln.cantidad || 0;
+  const pu       = +ln.precio_unitario || 0;
+  const desc     = +ln.descuento || 0; // porcentaje
+  const subtotal = cantidad * pu * (1 - (desc / 100)); // ✅ descuento como %
+  totalVenta += subtotal;
+  return { ...ln, cantidad, pu, desc, subtotal };
+});
 
       // 2) Comisión del transportista (según reglas)
       const comision = await calcularCostoEnvioProveedor({
@@ -92,7 +92,7 @@ class VentaService {
             cantidad:        take,
             precio_unitario: ln.pu,
             descuento:       ln.descuento || 0,
-            subtotal:        take * ln.pu - (ln.descuento || 0),
+              subtotal:        take * ln.pu * (1 - (ln.descuento || 0) / 100),
             costo_unitario:  lote.costo_lote,
             origen_lote_id:  lote.id
           });
@@ -240,23 +240,23 @@ static async update(id, data) {
     await VentaRepo.deleteHistorial(conn, id);
     await VentaRepo.deleteDetalle(conn, id);
 
-    // 4) Calcular nuevas líneas y total
-    let totalVenta = 0;
-    const nuevasLineas = nuevasLineasEntrada.map(ln => {
-      const cantidad = +ln.cantidad || 0;
-      const pu       = +ln.precio_unitario || 0;
-      const desc     = +ln.descuento || 0;  // si tu modelo aplica descuento por línea
-      const subtotal = cantidad * pu - desc;
-      totalVenta    += subtotal;
-      return {
-        producto_id: ln.producto_id,
-        cantidad,
-        pu,
-        descuento: desc,
-        subtotal
-      };
-    });
-    totalVenta = +Number(totalVenta).toFixed(2);
+   // 4) Calcular nuevas líneas y total
+let totalVenta = 0;
+const nuevasLineas = nuevasLineasEntrada.map(ln => {
+  const cantidad = +ln.cantidad || 0;
+  const pu       = +ln.precio_unitario || 0;
+  const desc     = +ln.descuento || 0;  // porcentaje
+  const subtotal = cantidad * pu * (1 - (desc / 100)); // ✅ aplica descuento %
+  totalVenta    += subtotal;
+  return {
+    producto_id: ln.producto_id,
+    cantidad,
+    pu,
+    descuento: desc,
+    subtotal
+  };
+});
+totalVenta = +Number(totalVenta).toFixed(2);
 
     // 4.b) Recalcular comisión del transportista con los valores NUEVOS
     const comision = await calcularCostoEnvioProveedor({
@@ -323,17 +323,19 @@ static async update(id, data) {
         );
 
         // Guardar línea por lote (con origen_lote_id)
-        const subtotalParcial = take * ln.pu - 0; // prorratea descuento si lo usas
-        await VentaRepo.insertDetalle(conn, {
-          venta_id:        id,
-          producto_id:     ln.producto_id,
-          cantidad:        take,
-          precio_unitario: ln.pu,
-          descuento:       0, // prorratear si usas descuentos por-línea
-          subtotal:        subtotalParcial,
-          costo_unitario:  lote.costo_lote,
-          origen_lote_id:  lote.id
-        });
+        const subtotalParcial = take * ln.pu * (1 - (ln.descuento || 0) / 100);
+
+await VentaRepo.insertDetalle(conn, {
+  venta_id:        id,
+  producto_id:     ln.producto_id,
+  cantidad:        take,
+  precio_unitario: ln.pu,
+  descuento:       ln.descuento || 0, // ✅ guarda el porcentaje real
+  subtotal:        subtotalParcial,
+  costo_unitario:  lote.costo_lote,
+  origen_lote_id:  lote.id
+});
+
 
         // Historial
         await VentaRepo.insertHistorial(conn, {
@@ -498,5 +500,5 @@ static async update(id, data) {
   return VentaRepo.search({ codigo, fecha, estado_envio, page, limit }); // <-- pasa estado_envio
 }
 }
-
+VentaService.finalizeIfCompleted = finalizeIfCompleted;
 module.exports = VentaService;

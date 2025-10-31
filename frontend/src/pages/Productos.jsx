@@ -1,7 +1,6 @@
-// frontend/src/pages/Productos.jsx
 import React, { useEffect, useState } from 'react';
-import Tooltip from '@mui/material/Tooltip';
 import {
+  Box,
   Container,
   Button,
   Stack,
@@ -13,9 +12,12 @@ import {
   FormControl,
   InputLabel,
   TablePagination,
+  Chip,
+  useMediaQuery,
+  Tooltip,
 } from '@mui/material';
-
-
+import { useTheme } from '@mui/material/styles';
+import FilterAltOffRoundedIcon from '@mui/icons-material/FilterAltOffRounded';
 import DataTable from '../components/DataTable';
 import DateField from '../components/DateField';
 import { fetchProductos, deleteProducto } from '../api/productos';
@@ -24,171 +26,93 @@ import { useNavigate } from 'react-router-dom';
 import { useLoading } from '../contexts/LoadingContext';
 import { useConfirm } from '../contexts/ConfirmContext';
 import { useToast } from '../contexts/ToastContext';
+
 export default function Productos() {
-  // data & loading
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  // filtros
   const [search, setSearch] = useState('');
   const [categoria, setCategoria] = useState('');
   const [subcategoria, setSubcategoria] = useState('');
-  const [categorias, setCategorias] = useState([]);       // categorías padre
-  const [subcategorias, setSubcategorias] = useState([]); // subcategorías hijas
-
-  // paginación (MUI usa 0-based en 'page')
+  const [categorias, setCategorias] = useState([]);
+  const [subcategorias, setSubcategorias] = useState([]);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [total, setTotal] = useState(0);
 
   const nav = useNavigate();
-   const { showToast } = useToast();
-const confirm = useConfirm();
+  const { showToast } = useToast();
+  const confirm = useConfirm();
   const { start, stop } = useLoading();
 
-  // Refrescar lista de productos con filtros + paginación (server-side)
+  const theme = useTheme();
+  const isMobileSm = useMediaQuery(theme.breakpoints.down('sm'));
+  const appBarH = isMobileSm ? 56 : 64;
+
   const refresh = async () => {
     setLoading(true);
     try {
       const filters = { search, categoriaId: categoria, subcategoriaId: subcategoria };
-      // Backend espera 1-based para 'page'
       const paging = { page: page + 1, pageSize: rowsPerPage };
-      // Nota: asegúrate de que fetchProductos soporte 'paging' en query (?page=&pageSize=)
       const res = await fetchProductos(filters, paging);
       const payload = res?.data;
-
-      // Soporta tanto respuesta antigua (array) como nueva ({ data, total })
       if (Array.isArray(payload)) {
         setData(payload);
-        setTotal(payload.length); // fallback
+        setTotal(payload.length);
       } else {
         setData(Array.isArray(payload?.data) ? payload.data : []);
         setTotal(Number(payload?.total ?? 0));
       }
     } catch (err) {
-      console.error('Error cargando productos:', err);
-     showToast({ message: 'Error cargando productos', severity: 'error' });
+      showToast({ message: 'Error cargando productos', severity: 'error' });
     } finally {
       setLoading(false);
     }
   };
 
-  // Cargar solo categorías padre
-  const loadCategorias = async () => {
-    try {
-      const res = await fetchCategoriasPadre();
-      setCategorias(Array.isArray(res.data) ? res.data : []);
-    } catch (err) {
-      console.error('Error cargando categorías', err);
-    showToast({ message: 'Error cargando Categorias', severity: 'error' });
-    }
-  };
-
-  // Cargar subcategorías según categoría seleccionada
-  const loadSubcategorias = async (categoriaId) => {
-    if (!categoriaId) {
-      setSubcategorias([]);
-      return;
-    }
-    try {
-      const res = await fetchSubcategorias(categoriaId);
-      setSubcategorias(Array.isArray(res.data) ? res.data : []);
-    } catch (err) {
-      console.error('Error cargando subcategorías:', err);
-     showToast({ message: 'Error cargando subcategorias', severity: 'error' });
-    }
-  };
-
-  // Al montar: cargar categorías y productos y luego apagar overlay
   useEffect(() => {
     (async () => {
-      try {
-        await Promise.all([loadCategorias(), refresh()]);
-      } finally {
-        stop(); // apaga overlay que pudo quedar encendido
-      }
+      await Promise.all([fetchCategoriasPadre().then(r => setCategorias(r.data)), refresh()]);
+      stop();
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Cuando cambian filtros o paginación: recargar productos
   useEffect(() => {
     refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, categoria, subcategoria, page, rowsPerPage]);
 
-  // Handlers filtros
-  const handleSearchChange = (e) => {
-    setSearch(e.target.value);
-    setPage(0); // reset paginación al cambiar filtros
+  const loadSubcategorias = async (id) => {
+    if (!id) return setSubcategorias([]);
+    const res = await fetchSubcategorias(id);
+    setSubcategorias(res.data);
   };
 
-  const handleCategoriaChange = (e) => {
-    const catId = e.target.value;
-    setCategoria(catId);
-    setSubcategoria('');
-    setPage(0);
-    loadSubcategorias(catId);
+  const handleDelete = async (row) => {
+    const ok = await confirm({
+      title: 'Eliminar producto',
+      content: `¿Eliminar el producto "${row.nombre}"?`,
+      confirmColor: 'error',
+    });
+    if (!ok) return;
+    try {
+      await deleteProducto(row.id);
+      showToast({ message: 'Producto eliminado', severity: 'success' });
+      await refresh();
+    } catch {
+      showToast({ message: 'Error al eliminar', severity: 'error' });
+    }
   };
 
-  const handleSubcategoriaChange = (e) => {
-    setSubcategoria(e.target.value);
-    setPage(0);
-  };
-
-  // Navegación CRUD
-  const goToNuevo = () => {
-    start(); // muestra overlay hasta que la pantalla siguiente monte y lo apague
-    nav('/productos/nuevo');
-  };
-
-  const goToEditar = (id) => {
-    start();
-    nav(`/productos/editar/${id}`);
-  };
-
-const handleDelete = async (row) => {
-   const ok = await confirm({
-     title: 'Eliminar producto',
-     content: `¿Eliminar (soft-delete) el producto "${row.nombre}"?`,
-     confirmText: 'Eliminar',
-     cancelText: 'Cancelar',
-    confirmColor: 'error',
-  });
-  if (!ok) return;   try {
-   await deleteProducto(row.id);
-    showToast({ message: 'Producto eliminado', severity: 'success' });
-    const nextPage = page > 0 && data.length === 1 ? page - 1 : page;
-   setPage(nextPage);
-    await refresh();
-  } catch (err) {
-   console.error('Error eliminando producto:', err);
-    showToast({ message: 'No se pudo eliminar el producto', severity: 'error' });
-  }
-};
-
-  // Definición de columnas para DataTable
   const columns = [
     {
       Header: 'Imagen',
+      width: 70,
+      sticky: 'left',
       accessor: (row) =>
         row.imagen_url ? (
           <Tooltip
-            title={
-              <img
-                src={row.imagen_url}
-                alt={row.nombre}
-                style={{
-                  width: 200,
-                  height: 200,
-                  objectFit: 'cover',
-                  borderRadius: 4,
-                }}
-              />
-            }
-            arrow
+            title={<img src={row.imagen_url} alt={row.nombre} width={200} height={200} />}
             placement="right"
-            interactive
+            arrow
           >
             <img
               src={row.imagen_url}
@@ -206,113 +130,163 @@ const handleDelete = async (row) => {
           '—'
         ),
     },
-    { Header: 'Nombre', accessor: 'nombre' },
-    { Header: 'Descripción', accessor: 'descripcion' },
-    // Mostrar precio_compra (informativo; el costo real por lote se maneja en compras)
-   {
-  Header: 'Precio Compra',
-  accessor: (row) =>
-    row.precio_compra ? `$${row.precio_compra}` : '$',
-},
-{
-  Header: 'Precio Venta',
-  accessor: (row) =>
-    row.precio_venta ? `$${row.precio_venta}` : '$',
-},
-    { Header: 'Stock', accessor: 'stock' },
-    { Header: 'Presentación', accessor: 'presentacion' },
-    { Header: 'Categoría', accessor: (row) => `${row.categoria || '—'} › ${row.subcategoria || '—'}` },
-    { Header: 'Marca', accessor: (row) => row.marca || '—' },
-    { Header: 'Creado', accessor: (row) => <DateField value={row.created_at} /> },
-    { Header: 'Modificado', accessor: (row) => <DateField value={row.modified_at} /> },
+    { Header: 'Nombre', accessor: 'nombre', width: 220, sticky: 'left', stickyOffset: 70 },
+    { Header: 'Precio Compra', accessor: (r) => `$${r.precio_compra}`, align: 'right', width: 120 },
+    { Header: 'Precio Venta', accessor: (r) => `$${r.precio_venta}`, align: 'right', width: 120 },
+    { Header: 'Stock', accessor: 'stock', align: 'right', width: 90 },
+    { Header: 'Presentación', accessor: 'presentacion', width: 140 },
+    {
+      Header: 'Categoría',
+      accessor: (r) => (
+        <>
+          <Chip size="small" label={r.categoria || '—'} sx={{ mr: 0.5 }} />
+          <Chip size="small" variant="outlined" label={r.subcategoria || '—'} />
+        </>
+      ),
+      width: 220,
+    },
+    { Header: 'Marca', accessor: (r) => r.marca || '—', width: 160 },
+    { Header: 'Descripción', accessor: 'descripcion', width: 320 },
+    { Header: 'Creado', accessor: (r) => <DateField value={r.created_at} />, width: 170 },
+    { Header: 'Modificado', accessor: (r) => <DateField value={r.modified_at} />, width: 170 },
   ];
 
   return (
-    <Container sx={{ mt: 4 }}>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
-        <Typography variant="h5">Productos</Typography>
-        <Button variant="contained" onClick={goToNuevo}>
-          Nuevo Producto
-        </Button>
-      </Stack>
+    <Box
+      sx={{
+        height: `calc(100vh - ${appBarH}px)`,
+        display: 'flex',
+        flexDirection: 'column',
+        p: 2,
+        overflow: 'hidden', // 👈 evita scroll en todo el contenido
+      }}
+    >
+      <Container
+        sx={{
+          flex: 1,
+          maxWidth: 'lg !important',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}
+      >
+        {/* ===== HEADER + FILTROS ===== */}
+        <Box sx={{ mb: 2 }}>
+          <Paper sx={{ p: 2, mb: 1 }}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems="center">
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                Productos
+              </Typography>
+              <Button
+                variant="contained"
+                onClick={() => nav('/productos/nuevo')}
+                sx={{
+                  position: { xs: 'fixed', md: 'static' },
+                  bottom: { xs: 16, md: 'auto' },
+                  right: { xs: 16, md: 'auto' },
+                  zIndex: (t) => t.zIndex.appBar + 2,
+                }}
+              >
+                Nuevo producto
+              </Button>
+            </Stack>
+          </Paper>
 
-      <Stack direction="row" spacing={2} mb={2}>
-        <TextField
-          label="Buscar Producto"
-          variant="outlined"
-          fullWidth
-          value={search}
-          onChange={handleSearchChange}
-        />
+          <Paper sx={{ p: 2 }}>
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems="center">
+              <TextField
+                label="Buscar producto"
+                fullWidth
+                size="small"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              <FormControl size="small" fullWidth>
+                <InputLabel>Categoría</InputLabel>
+                <Select
+                  value={categoria}
+                  label="Categoría"
+                  onChange={(e) => {
+                    setCategoria(e.target.value);
+                    setSubcategoria('');
+                    loadSubcategorias(e.target.value);
+                  }}
+                >
+                  <MenuItem value="">Todas</MenuItem>
+                  {categorias.map((c) => (
+                    <MenuItem key={c.id} value={c.id}>
+                      {c.nombre}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl size="small" fullWidth disabled={!categoria}>
+                <InputLabel>Subcategoría</InputLabel>
+                <Select
+                  value={subcategoria}
+                  label="Subcategoría"
+                  onChange={(e) => setSubcategoria(e.target.value)}
+                >
+                  <MenuItem value="">Todas</MenuItem>
+                  {subcategorias.map((s) => (
+                    <MenuItem key={s.id} value={s.id}>
+                      {s.nombre}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
 
-        <FormControl variant="outlined" fullWidth>
-          <InputLabel>Categoría</InputLabel>
-          <Select value={categoria} onChange={handleCategoriaChange} label="Categoría">
-            <MenuItem value="">Todas</MenuItem>
-            {categorias.map((cat) => (
-              <MenuItem key={cat.id} value={cat.id}>
-                {cat.nombre}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
+              {(search || categoria || subcategoria) && (
+                <Button
+                  startIcon={<FilterAltOffRoundedIcon />}
+                  onClick={() => {
+                    setSearch('');
+                    setCategoria('');
+                    setSubcategoria('');
+                    setSubcategorias([]);
+                  }}
+                >
+                  Limpiar filtros
+                </Button>
+              )}
+            </Stack>
+          </Paper>
+        </Box>
 
-        <FormControl variant="outlined" fullWidth>
-          <InputLabel>Subcategoría</InputLabel>
-          <Select
-            value={subcategoria}
-            onChange={handleSubcategoriaChange}
-            label="Subcategoría"
-            disabled={!categoria}
-          >
-            <MenuItem value="">Todas</MenuItem>
-            {subcategorias.map((sub) => (
-              <MenuItem key={sub.id} value={sub.id}>
-                {sub.nombre}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-          {/* Botón para limpiar */}
-  <Button
-    variant="outlined"
-    color="secondary"
-    onClick={() => {
-      setSearch('');
-      setCategoria('');
-      setSubcategoria('');
-      setSubcategorias([]);
-    }}
-  >
-    Limpiar filtros
-  </Button>
-      </Stack>
-
-      <Paper>
-        <DataTable
-          rows={data}
-          columns={columns}
-          loading={loading}
-          onEdit={(row) => goToEditar(row.id)}
-          onDelete={handleDelete}
-        />
-
-        {/* Paginación (server-side) */}
-        <TablePagination
-          component="div"
-          count={total}
-          page={page}
-          rowsPerPage={rowsPerPage}
-          onPageChange={(_, newPage) => setPage(newPage)}
-          onRowsPerPageChange={(e) => {
-            const next = parseInt(e.target.value, 10) || 10;
-            setRowsPerPage(next);
-            setPage(0); // reset a la primera página
+        {/* ===== TABLA ===== */}
+        <Paper
+          sx={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
           }}
-          rowsPerPageOptions={[10, 25, 50, 100]}
-          labelRowsPerPage="Filas por página"
-        />
-      </Paper>
-    </Container>
+        >
+          <DataTable
+            rows={data}
+            columns={columns}
+            loading={loading}
+            onEdit={(r) => nav(`/productos/editar/${r.id}`)}
+            onDelete={handleDelete}
+            stickyActionsRight
+            maxHeight="calc(100vh - 360px)" // 👈 ajusta según el tamaño de tus filtros
+          />
+          <TablePagination
+            component="div"
+            count={total}
+            page={page}
+            rowsPerPage={rowsPerPage}
+            onPageChange={(_, newPage) => setPage(newPage)}
+            onRowsPerPageChange={(e) => {
+              const next = parseInt(e.target.value, 10) || 10;
+              setRowsPerPage(next);
+              setPage(0);
+            }}
+            rowsPerPageOptions={[10, 25, 50, 100]}
+            labelRowsPerPage="Filas por página"
+          />
+        </Paper>
+      </Container>
+    </Box>
   );
 }

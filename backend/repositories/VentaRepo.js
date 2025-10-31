@@ -196,9 +196,9 @@ class VentaRepo {
   }
 
   // Detalle por venta
-  static async fetchLineas(id) {
-    const [rows] = await pool.query(
-      `SELECT
+static async fetchLineas(id) {
+  const [rows] = await pool.query(
+    `SELECT
          dv.id AS detalle_id,
          dv.producto_id,
          p.nombre AS producto_nombre,
@@ -207,15 +207,18 @@ class VentaRepo {
          dv.cantidad,
          dv.precio_unitario,
          dv.descuento,
+         (dv.cantidad * dv.precio_unitario * (dv.descuento / 100)) AS descuento_monto,
          dv.subtotal,
          dv.costo_unitario
        FROM detalle_venta dv
        JOIN productos p ON dv.producto_id = p.id
        WHERE dv.venta_id = ?`,
-      [id]
-    );
-    return rows;
-  }
+    [id]
+  );
+  return rows;
+}
+
+
 
   // Insertar línea detalle
   static async insertDetalle(conn, {

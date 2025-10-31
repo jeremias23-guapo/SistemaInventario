@@ -25,13 +25,11 @@ function KpiCard({ title, value }) {
 }
 
 export default function Reportes() {
-  // OJO: exponé stop en el contexto para poder “resetear” defensivamente
   const { withLoader, stop } = useLoading();
   const reqIdRef = useRef(0);
   const mountedRef = useRef(false);
   const didMount = useRef(false);
 
-  // ---- util robusto: timeout SIN “unhandled rejections” ----
   const SAFE_TIMEOUT_MS = 20000;
   const withTimeout = (promise, ms, label='task') =>
     new Promise((resolve, reject) => {
@@ -49,7 +47,7 @@ export default function Reportes() {
   // filtros
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  const [estado, setEstado] = useState('pagada');
+  const [estado, setEstado] = useState('finalizada'); // ✅ ahora filtra por estado_venta
   const TZ = '-06:00';
 
   // ventas
@@ -66,13 +64,13 @@ export default function Reportes() {
   const [byClient, setByClient] = useState([]);
   const [byUser, setByUser] = useState([]);
 
-  // inventario (paginado)
+  // inventario
   const [inventoryRows, setInventoryRows] = useState([]);
   const [invPage, setInvPage] = useState(1);
   const [invPageSize] = useState(50);
   const [invTotal, setInvTotal] = useState(0);
 
-  // bajo stock (paginado)
+  // bajo stock
   const [lowRows, setLowRows] = useState([]);
   const [lowPage, setLowPage] = useState(1);
   const [lowPageSize] = useState(50);
@@ -87,7 +85,7 @@ export default function Reportes() {
   };
   const paramsAgg = () => ({ from: from||undefined, to: to||undefined, estado, tz: TZ });
 
-  // cargas sin overlay (paginación fluida)
+  // cargas sin overlay
   const loadSales = async (rid) => {
     const r = await fetchSalesReport({ page, pageSize, ...paramsAgg() });
     if (rid && rid !== reqIdRef.current) return;
@@ -120,7 +118,7 @@ export default function Reportes() {
     logSettledErrors(res, 'reloadAgg');
   };
 
-  // carga visible con overlay
+  // carga inicial con overlay
   const loadAll = async () => {
     const rid = ++reqIdRef.current;
     try {
@@ -134,24 +132,20 @@ export default function Reportes() {
         logSettledErrors(results, 'loadAll');
       });
     } finally {
-      // Kill-switch defensivo: por si el contador quedó desbalanceado desde otra pantalla
       stop?.();
     }
   };
 
-  // mount: resetea overlay heredado y carga
   useEffect(() => {
     if (mountedRef.current) return;
     mountedRef.current = true;
-    stop?.();         // apaga overlay heredado si venías de otra ruta con loader activo
-    loadAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    stop?.();
+    loadAll(); // ✅ carga inicial automática
   }, []);
 
-  // paginación sin overlay
-  useEffect(() => { if (!didMount.current) { didMount.current = true; return; } loadSales(); /* eslint-disable-next-line */ }, [page]);
-  useEffect(() => { loadInventory(); /* eslint-disable-next-line */ }, [invPage]);
-  useEffect(() => { loadLowStock(); /* eslint-disable-next-line */ }, [lowPage, threshold]);
+  useEffect(() => { if (!didMount.current) { didMount.current = true; return; } loadSales(); }, [page]);
+  useEffect(() => { loadInventory(); }, [invPage]);
+  useEffect(() => { loadLowStock(); }, [lowPage, threshold]);
 
   const onApply = async () => {
     setPage(1); setInvPage(1); setLowPage(1);
@@ -163,6 +157,7 @@ export default function Reportes() {
     { Header:'Código', accessor:'codigo' },
     { Header:'Fecha', accessor:'fecha' },
     { Header:'Total', accessor:'total_venta', Cell: ({value}) => currency(value) },
+    { Header:'Ganancia neta', accessor:'ganancia_neta', Cell: ({value}) => currency(value) },
     { Header:'Cliente', accessor:'cliente' },
     { Header:'Usuario', accessor:'usuario' },
   ],[]);
@@ -180,10 +175,11 @@ export default function Reportes() {
     <Container sx={{ mt:4, pb:4 }}>
       {/* KPIs */}
       <Grid container spacing={2} sx={{ mb:2 }}>
-        <Grid item xs={6} md={3}><KpiCard title="Total ventas" value={currency(kpis?.total_ventas)} /></Grid>
-        <Grid item xs={6} md={3}><KpiCard title="Tickets" value={kpis?.tickets} /></Grid>
-        <Grid item xs={6} md={3}><KpiCard title="Ticket promedio" value={currency(kpis?.ticket_promedio)} /></Grid>
-        <Grid item xs={6} md={3}><KpiCard title="Clientes únicos" value={kpis?.clientes_unicos} /></Grid>
+        <Grid item xs={6} md={2.4}><KpiCard title="Total ventas" value={currency(kpis?.total_ventas)} /></Grid>
+        <Grid item xs={6} md={2.4}><KpiCard title="Tickets" value={kpis?.tickets} /></Grid>
+        <Grid item xs={6} md={2.4}><KpiCard title="Ticket promedio" value={currency(kpis?.ticket_promedio)} /></Grid>
+        <Grid item xs={6} md={2.4}><KpiCard title="Clientes únicos" value={kpis?.clientes_unicos} /></Grid>
+        <Grid item xs={6} md={2.4}><KpiCard title="Ganancia total" value={currency(kpis?.ganancia_total)} /></Grid>
       </Grid>
 
       {/* Toolbar filtros */}
@@ -192,10 +188,10 @@ export default function Reportes() {
           <TextField label="Desde" type="date" size="small" InputLabelProps={{ shrink: true }} value={from} onChange={(e)=>setFrom(e.target.value)} />
           <TextField label="Hasta" type="date" size="small" InputLabelProps={{ shrink: true }} value={to} onChange={(e)=>setTo(e.target.value)} />
           <FormControl size="small" sx={{ minWidth: 160 }}>
-            <InputLabel>Estado (pago)</InputLabel>
-            <Select label="Estado (pago)" value={estado} onChange={(e)=>setEstado(e.target.value)}>
-              <MenuItem value="pagada">Pagada</MenuItem>
-              <MenuItem value="pendiente">Pendiente</MenuItem>
+            <InputLabel>Estado de venta</InputLabel>
+            <Select label="Estado de venta" value={estado} onChange={(e)=>setEstado(e.target.value)}>
+              <MenuItem value="finalizada">Finalizada</MenuItem>
+              <MenuItem value="activa">Activa</MenuItem>
               <MenuItem value="cancelada">Cancelada</MenuItem>
               <MenuItem value="todas">Todas</MenuItem>
             </Select>
@@ -207,7 +203,7 @@ export default function Reportes() {
               const blob = await withTimeout(downloadSalesCsv({ ...paramsAgg() }), SAFE_TIMEOUT_MS, 'csv ventas');
               triggerDownload(blob, 'sales_report.csv');
             });
-            stop?.(); // defensa adicional
+            stop?.();
           }}>Exportar CSV</Button>
         </Stack>
       </Paper>
@@ -273,6 +269,7 @@ export default function Reportes() {
               <Tooltip />
               <Legend />
               <Bar dataKey="ingreso" name="Ingreso" />
+              <Bar dataKey="ganancia" name="Ganancia" /> {/* ✅ si backend la devuelve */}
               <Bar dataKey="unidades" name="Unidades" />
             </BarChart>
           </ResponsiveContainer>
@@ -321,6 +318,7 @@ export default function Reportes() {
               <Tooltip />
               <Legend />
               <Bar dataKey="ingreso" name="Ingreso" />
+              <Bar dataKey="ganancia" name="Ganancia" />
               <Bar dataKey="tickets" name="Tickets" />
             </BarChart>
           </ResponsiveContainer>
@@ -347,6 +345,7 @@ export default function Reportes() {
               <Tooltip />
               <Legend />
               <Bar dataKey="ingreso" name="Ingreso" />
+              <Bar dataKey="ganancia" name="Ganancia" />
               <Bar dataKey="tickets" name="Tickets" />
             </BarChart>
           </ResponsiveContainer>

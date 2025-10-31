@@ -1,14 +1,30 @@
 // frontend/src/pages/OrdenCompraForm.jsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
-  Container, TextField, Button, Stack, Typography,
-  Grid, Box, Paper, IconButton, Divider, MenuItem
+  Box,
+  Container,
+  TextField,
+  Button,
+  Stack,
+  Typography,
+  Paper,
+  MenuItem,
+  IconButton,
+  Grid,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Divider,
 } from '@mui/material';
 import { AddCircle, RemoveCircle } from '@mui/icons-material';
-import { fetchOrdenCompra, createOrdenCompra, updateOrdenCompra } from '../api/ordenes_compra';
-import { fetchProveedores, fetchProveedor } from '../api/proveedores';
-import { fetchProducto, searchProductosLight } from '../api/productos';
+import { useTheme } from '@mui/material/styles';
 import { useNavigate, useParams } from 'react-router-dom';
+import { fetchOrdenCompra, createOrdenCompra, updateOrdenCompra } from '../api/ordenes_compra';
+import { fetchProveedores } from '../api/proveedores';
+import { searchProductosLight } from '../api/productos';
 import { useLoading } from '../contexts/LoadingContext';
 import { useToast } from '../contexts/ToastContext';
 import { useConfirm } from '../contexts/ConfirmContext';
@@ -20,127 +36,131 @@ export default function OrdenCompraForm() {
   const { start, stop } = useLoading();
   const { showToast } = useToast();
   const confirm = useConfirm();
+  const theme = useTheme();
 
-  const [cabecera, setCabecera] = useState({ codigo: '', proveedor_id: '', estado: 'pendiente' });
-  const [proveedorSel, setProveedorSel] = useState(null); // { id, label }
-
-  // cada línea: { producto_id, productoObj, cantidad, precio_unitario, impuesto, libraje, descuento }
+  const [cabecera, setCabecera] = useState({
+    codigo: '',
+    proveedor_id: '',
+    estado: 'pendiente',
+  });
+  const [proveedorSel, setProveedorSel] = useState(null);
   const [lineas, setLineas] = useState([]);
   const [dirty, setDirty] = useState(false);
 
-  // Carga inicial y, si aplica, la orden
+  // === CARGA DE ORDEN EXISTENTE ===
   useEffect(() => {
-    stop(); // apaga overlay global al montar
-
+    stop();
     if (id) {
       fetchOrdenCompra(id)
-        .then(async (r) => {
+        .then((r) => {
           const data = r?.data ?? r ?? {};
+
           setCabecera({
             codigo: data.codigo || '',
-            proveedor_id: data.proveedor_id != null ? String(data.proveedor_id) : '',
-            estado: data.estado || 'pendiente'
+            proveedor_id: data.proveedor_id ? String(data.proveedor_id) : '',
+            estado: data.estado || 'pendiente',
           });
 
-          // Pre-cargar proveedor seleccionado para mostrar su label
-          if (data.proveedor_id != null) {
-            try {
-              const rp = await fetchProveedor(data.proveedor_id);
-              const pv = rp?.data ?? null;
-              if (pv) setProveedorSel({ id: String(pv.id), label: pv.nombre });
-              else setProveedorSel({ id: String(data.proveedor_id), label: '' });
-            } catch {
-              setProveedorSel({ id: String(data.proveedor_id), label: '' });
-            }
+          if (data.proveedor_nombre && data.proveedor_id) {
+            setProveedorSel({
+              id: String(data.proveedor_id),
+              label: data.proveedor_nombre,
+            });
           }
 
-          // Preparar líneas y resolver labels de productos para el autocomplete
-          const baseLineas = (data.lineas || []).map(ln => ({
-            producto_id: ln.producto_id != null ? String(ln.producto_id) : '',
-            productoObj: null,
+          // ✅ Usar producto del backend directamente
+          const baseLineas = (data.lineas || []).map((ln) => ({
+            producto_id: String(ln.producto?.id || ''),
+            productoObj: ln.producto
+              ? { id: String(ln.producto.id), label: ln.producto.nombre }
+              : null,
             cantidad: ln.cantidad ?? '',
             precio_unitario: ln.precio_unitario ?? '',
             impuesto: ln.impuesto ?? '',
             libraje: ln.libraje ?? '',
-            descuento: ln.descuento ?? ''
+            descuento: ln.descuento ?? '',
           }));
 
-          const llenas = await Promise.all(
-            baseLineas.map(async (ln) => {
-              if (!ln.producto_id) return ln;
-              try {
-                const rp = await fetchProducto(ln.producto_id);
-                const p = rp?.data ?? rp ?? null;
-                return p
-                  ? { ...ln, productoObj: { id: String(p.id), label: p.nombre } }
-                  : ln;
-              } catch {
-                return ln;
-              }
-            })
-          );
-          setLineas(llenas);
+          setLineas(baseLineas);
         })
-        .catch(() => showToast({ message: 'No se pudo cargar la orden.', severity: 'error' }));
+        .catch(() =>
+          showToast({ message: 'Error al cargar la orden.', severity: 'error' })
+        );
     }
   }, [id, showToast, stop]);
 
-  // Mapeador para el AsyncAutocomplete (5 por página) - Proveedores
+  // === FETCHERS ===
   const fetchPageProveedores = async ({ q, page, limit }) => {
-    const res = await fetchProveedores({ page, limit, search: q }); // backend: {data,total}
+    const res = await fetchProveedores({ page, limit, search: q });
     const payload = res?.data ?? {};
     const data = Array.isArray(payload.data) ? payload.data : [];
     const total = Number(payload.total || 0);
     return {
-      items: data.map(p => ({ id: String(p.id), label: p.nombre })),
-      hasMore: page * limit < total
+      items: data.map((p) => ({ id: String(p.id), label: p.nombre })),
+      hasMore: page * limit < total,
     };
   };
 
-  // Paginador para productos (sin mostrar precios)
   const fetchPageProductos = async ({ q, page, limit }) => {
-    // Espera: { items:[{id,label,...}], hasMore, page, pageSize, total }
     const res = await searchProductosLight({ q, page, pageSize: limit });
     const items = Array.isArray(res?.items) ? res.items : [];
     return {
-      items: items.map(it => ({
+      items: items.map((it) => ({
         id: String(it.id),
-        label: it.label ?? it.nombre ?? `#${it.id}`
+        label: it.label ?? it.nombre ?? `#${it.id}`,
       })),
-      hasMore: Boolean(res?.hasMore)
+      hasMore: Boolean(res?.hasMore),
     };
   };
 
-  const handleCabeceraChange = e => {
-    setCabecera(c => ({ ...c, [e.target.name]: e.target.value }));
+  // === HANDLERS ===
+  const handleCabeceraChange = (e) => {
+    setCabecera((c) => ({ ...c, [e.target.name]: e.target.value }));
     setDirty(true);
   };
 
   const handleLineaChange = (i, e) => {
-    setLineas(l => l.map((ln, idx) => (idx === i ? { ...ln, [e.target.name]: e.target.value } : ln)));
+    setLineas((l) =>
+      l.map((ln, idx) =>
+        idx === i ? { ...ln, [e.target.name]: e.target.value } : ln
+      )
+    );
     setDirty(true);
   };
 
   const addLinea = () => {
-    setLineas(l => [
+    setLineas((l) => [
       ...l,
-      { producto_id: '', productoObj: null, cantidad: '', precio_unitario: '', impuesto: '', libraje: '', descuento: '' }
+      {
+        producto_id: '',
+        productoObj: null,
+        cantidad: '',
+        precio_unitario: '',
+        impuesto: '',
+        libraje: '',
+        descuento: '',
+      },
     ]);
     setDirty(true);
   };
 
-  const removeLinea = i => {
-    setLineas(l => l.filter((_, idx) => idx !== i));
+  const removeLinea = (i) => {
+    setLineas((l) => l.filter((_, idx) => idx !== i));
     setDirty(true);
   };
 
-  const calcularSubtotal = ln => {
+  // === CALCULO SUBTOTAL (con % de impuesto y descuento) ===
+  // 🔹 Libraje se multiplica por la cantidad (por unidad)
+  const calcularSubtotal = (ln) => {
     const c = Number(ln.cantidad) || 0;
     const pu = Number(ln.precio_unitario) || 0;
     const imp = Number(ln.impuesto) || 0;
     const lib = Number(ln.libraje) || 0;
     const d = Number(ln.descuento) || 0;
-    return c * pu + imp + lib - d;
+
+    const base = c * pu;
+    const subtotal = base + base * (imp / 100) + (lib * c) - base * (d / 100);
+    return subtotal;
   };
 
   const totalOrden = useMemo(
@@ -148,66 +168,51 @@ export default function OrdenCompraForm() {
     [lineas]
   );
 
+  // === GUARDAR / ACTUALIZAR ===
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    if (!cabecera.proveedor_id) {
-      showToast({ message: 'Selecciona un proveedor.', severity: 'warning' });
-      return;
-    }
-    if (!lineas.length) {
-      showToast({ message: 'Agrega al menos una línea.', severity: 'warning' });
-      return;
-    }
-    const invalida = lineas.some(
-      ln => !ln.producto_id && !ln.productoObj || Number(ln.cantidad) <= 0 || Number(ln.precio_unitario) <= 0
-    );
-    if (invalida) {
-      showToast({ message: 'Revisa producto, cantidad y precio en cada línea.', severity: 'warning' });
-      return;
-    }
+    if (!cabecera.proveedor_id)
+      return showToast({ message: 'Selecciona un proveedor.', severity: 'warning' });
+    if (!lineas.length)
+      return showToast({ message: 'Agrega al menos una línea.', severity: 'warning' });
 
     const payload = {
       codigo: cabecera.codigo,
       proveedor_id: Number(cabecera.proveedor_id),
       estado: cabecera.estado,
-      lineas: lineas.map(ln => ({
+      lineas: lineas.map((ln) => ({
         producto_id: Number(ln.productoObj?.id ?? ln.producto_id),
         cantidad: Number(ln.cantidad),
-        precio_unitario: Number(ln.precio_unitario), // manual
+        precio_unitario: Number(ln.precio_unitario),
         impuesto: Number(ln.impuesto) || 0,
         libraje: Number(ln.libraje) || 0,
-        descuento: Number(ln.descuento) || 0
-      }))
+        descuento: Number(ln.descuento) || 0,
+      })),
     };
 
     if (id) {
       const ok = await confirm({
         title: 'Actualizar orden',
-        content: '¿Estás seguro de actualizar esta orden?',
-        confirmText: 'Sí, actualizar',
-        cancelText: 'No, volver',
-        confirmColor: 'warning'
+        content: '¿Deseas actualizar esta orden?',
+        confirmText: 'Actualizar',
+        cancelText: 'Cancelar',
+        confirmColor: 'warning',
       });
       if (!ok) return;
     }
 
     start();
     try {
-      if (id) {
-        await updateOrdenCompra(id, payload);
-      } else {
-        await createOrdenCompra(payload);
-      }
-
+      if (id) await updateOrdenCompra(id, payload);
+      else await createOrdenCompra(payload);
       nav('/ordenes_compra', {
         replace: true,
         state: {
           flash: {
             severity: 'success',
-            message: id ? 'Orden actualizada correctamente.' : 'Orden creada correctamente.'
-          }
-        }
+            message: id ? 'Orden actualizada correctamente.' : 'Orden creada correctamente.',
+          },
+        },
       });
     } catch (err) {
       console.error(err);
@@ -216,212 +221,248 @@ export default function OrdenCompraForm() {
     }
   };
 
+  // === CANCELAR ===
   const handleCancel = async () => {
-    if (!dirty) { start(); nav('/ordenes_compra'); return; }
+    if (!dirty) {
+      start();
+      nav('/ordenes_compra');
+      return;
+    }
     const ok = await confirm({
       title: 'Descartar cambios',
-      content: 'Tienes cambios sin guardar. ¿Deseas salir y descartar los cambios?',
+      content: 'Tienes cambios sin guardar. ¿Deseas salir?',
       confirmText: 'Salir sin guardar',
       cancelText: 'Seguir editando',
-      confirmColor: 'warning'
+      confirmColor: 'warning',
     });
-    if (ok) { start(); nav('/ordenes_compra'); }
+    if (ok) {
+      start();
+      nav('/ordenes_compra');
+    }
   };
 
+  // === RENDER ===
   return (
-    <Container maxWidth="md" sx={{ mt: 4, mb: 4 }}>
-      <Paper sx={{ p: 4 }}>
-        <Typography variant="h5" gutterBottom>
-          {id ? 'Editar Orden de Compra' : 'Nueva Orden de Compra'}
-        </Typography>
-        <Divider sx={{ mb: 3 }} />
-        <form onSubmit={handleSubmit}>
-          <Stack spacing={3}>
-            {/* Cabecera */}
-            <Grid container spacing={2}>
-              <Grid item xs={12} md={4}>
-                <TextField
-                  label="Código"
-                  name="codigo"
-                  value={cabecera.codigo}
-                  onChange={handleCabeceraChange}
-                  required
-                  fullWidth
-                />
-              </Grid>
+    <Container
+      maxWidth="lg"
+      sx={{
+        mt: 2,
+        height: 'calc(100vh - 100px)',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      <Paper
+        sx={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          borderRadius: 3,
+          boxShadow: 3,
+          overflow: 'hidden',
+        }}
+      >
+        {/* CONTENIDO SCROLLEABLE */}
+        <Box sx={{ flex: 1, overflowY: 'auto', p: 3 }}>
+          <Typography variant="h5" sx={{ fontWeight: 600, mb: 2 }}>
+            {id ? 'Editar Orden de Compra' : 'Nueva Orden de Compra'}
+          </Typography>
+          <Divider sx={{ mb: 3 }} />
 
-              <Grid item xs={12} md={4}>
-                <AsyncAutocomplete
-                  label="Proveedor"
-                  value={proveedorSel}
-                  onChange={(val) => {
-                    setProveedorSel(val);
-                    setCabecera(c => ({ ...c, proveedor_id: val?.id ?? '' }));
-                    setDirty(true);
-                  }}
-                  fetchPage={fetchPageProveedores} // server-side
-                  limit={5}
-                  placeholder="Buscar proveedor..."
-                  noOptionsText="Sin resultados"
-                  loadingText="Buscando…"
-                  popupMinWidth={360}
-                />
-              </Grid>
+          <form id="orden-form" onSubmit={handleSubmit}>
+            {/* === CABECERA (mejorada y responsive) === */}
+<Box
+  sx={{
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 2,
+    alignItems: 'flex-start',
+    mb: 2,
+  }}
+>
+  {/* Código */}
+  <TextField
+    label="Código"
+    name="codigo"
+    value={cabecera.codigo}
+    onChange={handleCabeceraChange}
+    required
+    fullWidth
+    sx={{ flex: '1 1 180px', minWidth: 180 }}
+  />
 
-              <Grid item xs={12} md={4}>
-                <TextField
-                  select
-                  label="Estado"
-                  name="estado"
-                  value={cabecera.estado}
-                  onChange={handleCabeceraChange}
-                  fullWidth
-                >
-                  <MenuItem value="pendiente">Pendiente</MenuItem>
-                  <MenuItem value="recibida">Recibida</MenuItem>
-                  <MenuItem value="cancelada">Cancelada</MenuItem>
-                </TextField>
-              </Grid>
-            </Grid>
+  {/* Proveedor */}
+  <Box sx={{ flex: '1 1 260px', minWidth: 240 }}>
+    <AsyncAutocomplete
+      label="Proveedor"
+      value={proveedorSel}
+      onChange={(val) => {
+        setProveedorSel(val);
+        setCabecera((c) => ({ ...c, proveedor_id: val?.id ?? '' }));
+      }}
+      fetchPage={fetchPageProveedores}
+      limit={5}
+      placeholder="Buscar proveedor..."
+    />
+  </Box>
 
-            {/* Líneas */}
-            <Stack spacing={2}>
-              {lineas.map((ln, idx) => (
-                <Paper key={idx} sx={{ p: 2, position: 'relative' }}>
-                  <IconButton
-                    size="small"
-                    onClick={() => removeLinea(idx)}
-                    sx={{ position: 'absolute', top: 8, right: 8, color: 'error.main' }}
-                    title="Eliminar línea"
-                  >
-                    <RemoveCircle />
-                  </IconButton>
+  {/* Estado */}
+  <TextField
+    select
+    label="Estado"
+    name="estado"
+    value={cabecera.estado}
+    onChange={handleCabeceraChange}
+    fullWidth
+    sx={{ flex: '1 1 200px', minWidth: 200 }}
+  >
+    <MenuItem value="pendiente">Pendiente</MenuItem>
+    <MenuItem value="recibida">Recibida</MenuItem>
+    <MenuItem value="cancelada">Cancelada</MenuItem>
+  </TextField>
+</Box>
 
-                  <Grid container spacing={2} alignItems="center">
-                    <Grid item xs={12} md={6}>
-                      <AsyncAutocomplete
-                        label="Producto"
-                        value={ln.productoObj || (ln.producto_id ? { id: ln.producto_id, label: '' } : null)}
-                        onChange={(val) => {
-                          setLineas(ls => ls.map((l, i) => i === idx
-                            ? {
-                                ...l,
-                                productoObj: val || null,
-                                producto_id: val?.id ?? ''
-                              }
-                            : l
-                          ));
-                          setDirty(true);
-                        }}
-                        fetchPage={fetchPageProductos}
-                        limit={10}
-                        placeholder="Buscar producto..."
-                        noOptionsText="Sin resultados"
-                        loadingText="Buscando…"
-                        popupMinWidth={420}
-                        // No mostrar precios en las opciones:
-                        renderOption={(props, opt) => (
-                          <li {...props} key={opt.id} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {opt.label}
-                            </span>
-                          </li>
-                        )}
-                      />
-                    </Grid>
 
-                    <Grid item xs={6} md={2}>
-                      <TextField
-                        label="Cantidad"
-                        name="cantidad"
-                        type="number"
-                        value={ln.cantidad}
-                        onChange={e => handleLineaChange(idx, e)}
-                        required
-                        fullWidth
-                      />
-                    </Grid>
+            <Typography variant="h6" sx={{ mt: 3, mb: 1 }}>
+              Detalle de Productos
+            </Typography>
 
-                    <Grid item xs={6} md={2}>
-                      <TextField
-                        label="Precio U."
-                        name="precio_unitario"
-                        type="number"
-                        inputProps={{ step: '0.01' }}
-                        value={ln.precio_unitario}
-                        onChange={e => handleLineaChange(idx, e)}
-                        required
-                        fullWidth
-                      />
-                    </Grid>
+            <TableContainer sx={{ borderRadius: 2, boxShadow: 1 }}>
+              <Table size="small" stickyHeader>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Producto</TableCell>
+                    <TableCell align="right">Cantidad</TableCell>
+                    <TableCell align="right">Precio U.</TableCell>
+                    <TableCell align="right">Impuesto (%)</TableCell>
+                    <TableCell align="right">Libraje ($)</TableCell>
+                    <TableCell align="right">Descuento (%)</TableCell>
+                    <TableCell align="right">Subtotal</TableCell>
+                    <TableCell align="center">Acción</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {lineas.map((ln, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell width="25%">
+                        <AsyncAutocomplete
+                          label=""
+                          value={ln.productoObj}
+                          fetchPage={fetchPageProductos}
+                          onChange={(val) => {
+                            setLineas((ls) =>
+                              ls.map((l, i) =>
+                                i === idx ? { ...l, productoObj: val, producto_id: val?.id ?? '' } : l
+                              )
+                            );
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell align="right" width="8%">
+                        <TextField
+                          size="small"
+                          name="cantidad"
+                          type="number"
+                          value={ln.cantidad}
+                          onChange={(e) => handleLineaChange(idx, e)}
+                          fullWidth
+                        />
+                      </TableCell>
+                      <TableCell align="right" width="10%">
+                        <TextField
+                          size="small"
+                          name="precio_unitario"
+                          type="number"
+                          value={ln.precio_unitario}
+                          onChange={(e) => handleLineaChange(idx, e)}
+                          fullWidth
+                        />
+                      </TableCell>
+                      <TableCell align="right" width="10%">
+                        <TextField
+                          size="small"
+                          name="impuesto"
+                          type="number"
+                          value={ln.impuesto}
+                          onChange={(e) => handleLineaChange(idx, e)}
+                          fullWidth
+                        />
+                      </TableCell>
+                      <TableCell align="right" width="10%">
+                        <TextField
+                          size="small"
+                          name="libraje"
+                          type="number"
+                          value={ln.libraje}
+                          onChange={(e) => handleLineaChange(idx, e)}
+                          fullWidth
+                        />
+                      </TableCell>
+                      <TableCell align="right" width="10%">
+                        <TextField
+                          size="small"
+                          name="descuento"
+                          type="number"
+                          value={ln.descuento}
+                          onChange={(e) => handleLineaChange(idx, e)}
+                          fullWidth
+                        />
+                      </TableCell>
+                      <TableCell align="right" width="10%">
+                        ${calcularSubtotal(ln).toFixed(2)}
+                      </TableCell>
+                      <TableCell align="center" width="5%">
+                        <IconButton color="error" onClick={() => removeLinea(idx)}>
+                          <RemoveCircle />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  <TableRow>
+                    <TableCell colSpan={8} align="center">
+                      <Button
+                        startIcon={<AddCircle />}
+                        onClick={addLinea}
+                        variant="outlined"
+                        sx={{ mt: 1 }}
+                      >
+                        Agregar Línea
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </form>
+        </Box>
 
-                    <Grid item xs={12} md={2}>
-                      <TextField
-                        label="Subtotal"
-                        value={calcularSubtotal(ln).toFixed(2)}
-                        InputProps={{ readOnly: true }}
-                        fullWidth
-                      />
-                    </Grid>
-                  </Grid>
-
-                  <Grid container spacing={2} sx={{ mt: 2 }}>
-                    <Grid item xs={4} md={4}>
-                      <TextField
-                        label="Impuesto"
-                        name="impuesto"
-                        type="number"
-                        inputProps={{ step: '0.01' }}
-                        value={ln.impuesto}
-                        onChange={e => handleLineaChange(idx, e)}
-                        fullWidth
-                      />
-                    </Grid>
-                    <Grid item xs={4} md={4}>
-                      <TextField
-                        label="Libraje"
-                        name="libraje"
-                        type="number"
-                        inputProps={{ step: '0.01' }}
-                        value={ln.libraje}
-                        onChange={e => handleLineaChange(idx, e)}
-                        fullWidth
-                      />
-                    </Grid>
-                    <Grid item xs={4} md={4}>
-                      <TextField
-                        label="Descuento"
-                        name="descuento"
-                        type="number"
-                        inputProps={{ step: '0.01' }}
-                        value={ln.descuento}
-                        onChange={e => handleLineaChange(idx, e)}
-                        fullWidth
-                      />
-                    </Grid>
-                  </Grid>
-                </Paper>
-              ))}
-
-              <Box textAlign="center" sx={{ mt: 1 }}>
-                <Button variant="outlined" startIcon={<AddCircle />} onClick={addLinea}>
-                  Agregar Línea
-                </Button>
-              </Box>
-            </Stack>
-
-            {/* Total y botones */}
-            <Box display="flex" justifyContent="space-between" sx={{ mt: 3 }}>
-              <Typography variant="h6">
-                Total: {new Intl.NumberFormat('es-SV', { style: 'currency', currency: 'USD' }).format(totalOrden)}
-              </Typography>
-              <Stack direction="row" spacing={2}>
-                <Button variant="outlined" onClick={handleCancel}>Cancelar</Button>
-                <Button variant="contained" type="submit">{id ? 'Actualizar' : 'Guardar'}</Button>
-              </Stack>
-            </Box>
+        {/* FOOTER FIJO */}
+        <Box
+          sx={{
+            p: 2,
+            borderTop: (t) => `1px solid ${t.palette.divider}`,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            background: theme.palette.background.paper,
+          }}
+        >
+          <Typography variant="h6">
+            Total:{' '}
+            {new Intl.NumberFormat('es-SV', {
+              style: 'currency',
+              currency: 'USD',
+            }).format(totalOrden)}
+          </Typography>
+          <Stack direction="row" spacing={2}>
+            <Button variant="outlined" onClick={handleCancel}>
+              Cancelar
+            </Button>
+            <Button type="submit" form="orden-form" variant="contained">
+              {id ? 'Actualizar' : 'Guardar'}
+            </Button>
           </Stack>
-        </form>
+        </Box>
       </Paper>
     </Container>
   );

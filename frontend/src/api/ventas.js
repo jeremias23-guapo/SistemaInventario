@@ -58,3 +58,7 @@ export const searchVentas = ({ codigo, fecha, estado_envio, page = 1, limit = 10
   if (limit) params.append('limit', limit);
   return API.get(`/search?${params.toString()}`).then(res => res.data);
 };
+
+// --- ✅ NUEVO: quick update usando PATCH /ventas/:id/estado ---
+export const quickUpdateVenta = (id, data) =>
+  API.patch(`/${id}/estado`, data).then(res => res.data);

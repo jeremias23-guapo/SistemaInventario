@@ -1,4 +1,3 @@
-// repositories/ReportsRepo.js
 const pool = require('../config/db');
 
 /* ========= Utilidades ========= */
@@ -7,8 +6,7 @@ function sanitizeTz(tz) {
 }
 function normalizeEstado(e) {
   if (!e || e === 'todas') return null;
-  if (e === 'pendiente') return 'pendiente_pago';
-  return e; // pagada | cancelada
+  return e; // activa | cancelada | finalizada
 }
 const tzDateExpr = "DATE(CONVERT_TZ(v.fecha, '+00:00', ?))";
 function pushDateFilter(whereArr, paramsArr, op, tzSafe, value) {
@@ -19,22 +17,33 @@ function pushDateFilter(whereArr, paramsArr, op, tzSafe, value) {
 /* ========= Ventas: paginado + conteo ========= */
 exports.findSales = async ({ limit, offset, from, to, estado, tz }) => {
   const tzSafe = sanitizeTz(tz);
-  const estadoNorm = normalizeEstado(estado) ?? 'pagada';
-  const where = ['v.estado_pago = ?'];
+  const estadoNorm = normalizeEstado(estado) ?? 'finalizada';
+  const where = ['v.estado_venta = ?'];
   const params = [estadoNorm];
   if (from) pushDateFilter(where, params, '>=', tzSafe, from);
   if (to)   pushDateFilter(where, params, '<=', tzSafe, to);
 
   const sql = `
-    SELECT v.id, v.codigo, ${tzDateExpr} AS fecha,
-           v.total_venta,
-           c.nombre AS cliente,
-           u.username AS usuario,
-           v.metodo_pago, v.estado_envio, v.estado_pago, v.estado_venta
+    SELECT 
+      v.id, v.codigo, ${tzDateExpr} AS fecha,
+      v.total_venta,
+      c.nombre AS cliente,
+      u.username AS usuario,
+      v.metodo_pago, v.estado_envio, v.estado_pago, v.estado_venta,
+      ROUND(
+        SUM(
+          dv.cantidad * (
+            dv.precio_unitario * (1 - IFNULL(dv.descuento,0)/100)
+            - dv.costo_unitario
+          )
+        ) - IFNULL(v.comision_transportista,0),
+      2) AS ganancia_neta
     FROM ventas v
+    JOIN detalle_venta dv ON dv.venta_id = v.id
     JOIN clientes c ON c.id = v.cliente_id
     LEFT JOIN usuarios u ON u.id = v.usuario_id
     WHERE ${where.join(' AND ')}
+    GROUP BY v.id
     ORDER BY v.fecha DESC
     LIMIT ? OFFSET ?
   `;
@@ -44,8 +53,8 @@ exports.findSales = async ({ limit, offset, from, to, estado, tz }) => {
 
 exports.countSales = async ({ from, to, estado, tz }) => {
   const tzSafe = sanitizeTz(tz);
-  const estadoNorm = normalizeEstado(estado) ?? 'pagada';
-  const where = ['v.estado_pago = ?'];
+  const estadoNorm = normalizeEstado(estado) ?? 'finalizada';
+  const where = ['v.estado_venta = ?'];
   const params = [estadoNorm];
   if (from) pushDateFilter(where, params, '>=', tzSafe, from);
   if (to)   pushDateFilter(where, params, '<=', tzSafe, to);
@@ -60,7 +69,7 @@ exports.findKpis = async ({ from, to, estado, tz }) => {
   const where = [];
   const params = [];
   const estadoNorm = normalizeEstado(estado);
-  if (estadoNorm) { where.push('v.estado_pago = ?'); params.push(estadoNorm); }
+  if (estadoNorm) { where.push('v.estado_venta = ?'); params.push(estadoNorm); }
   if (from) pushDateFilter(where, params, '>=', tzSafe, from);
   if (to)   pushDateFilter(where, params, '<=', tzSafe, to);
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -71,7 +80,13 @@ exports.findKpis = async ({ from, to, estado, tz }) => {
       SUM(v.total_venta) AS total_ventas,
       ROUND(SUM(v.total_venta)/NULLIF(COUNT(*),0),2) AS ticket_promedio,
       COUNT(DISTINCT v.cliente_id) AS clientes_unicos,
-      COUNT(DISTINCT v.usuario_id) AS usuarios_vendedores
+      COUNT(DISTINCT v.usuario_id) AS usuarios_vendedores,
+      ROUND(
+        SUM(
+          (SELECT SUM(dv.cantidad * (dv.precio_unitario - dv.costo_unitario))
+           FROM detalle_venta dv WHERE dv.venta_id = v.id)
+        ) - SUM(IFNULL(v.comision_transportista,0)),
+      2) AS ganancia_total
     FROM ventas v
     ${whereSql}
   `;
@@ -84,7 +99,7 @@ exports.findSalesByDay = async ({ from, to, estado, tz }) => {
   const where = [];
   const params = [];
   const estadoNorm = normalizeEstado(estado);
-  if (estadoNorm) { where.push('v.estado_pago = ?'); params.push(estadoNorm); }
+  if (estadoNorm) { where.push('v.estado_venta = ?'); params.push(estadoNorm); }
   if (from) pushDateFilter(where, params, '>=', tzSafe, from);
   if (to)   pushDateFilter(where, params, '<=', tzSafe, to);
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -105,7 +120,7 @@ exports.findSalesByProduct = async ({ from, to, estado, tz, limit = 20 }) => {
   const where = [];
   const params = [];
   const estadoNorm = normalizeEstado(estado);
-  if (estadoNorm) { where.push('v.estado_pago = ?'); params.push(estadoNorm); }
+  if (estadoNorm) { where.push('v.estado_venta = ?'); params.push(estadoNorm); }
   if (from) pushDateFilter(where, params, '>=', tzSafe, from);
   if (to)   pushDateFilter(where, params, '<=', tzSafe, to);
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -113,7 +128,8 @@ exports.findSalesByProduct = async ({ from, to, estado, tz, limit = 20 }) => {
   const sql = `
     SELECT dv.producto_id, p.nombre,
            SUM(dv.cantidad) AS unidades,
-           SUM(dv.subtotal) AS ingreso
+           SUM(dv.subtotal) AS ingreso,
+           ROUND(SUM((dv.precio_unitario - dv.costo_unitario) * dv.cantidad),2) AS ganancia
     FROM detalle_venta dv
     JOIN ventas v ON v.id = dv.venta_id
     JOIN productos p ON p.id = dv.producto_id
@@ -131,7 +147,7 @@ exports.findSalesByCategory = async ({ from, to, estado, tz }) => {
   const where = [];
   const params = [];
   const estadoNorm = normalizeEstado(estado);
-  if (estadoNorm) { where.push('v.estado_pago = ?'); params.push(estadoNorm); }
+  if (estadoNorm) { where.push('v.estado_venta = ?'); params.push(estadoNorm); }
   if (from) pushDateFilter(where, params, '>=', tzSafe, from);
   if (to)   pushDateFilter(where, params, '<=', tzSafe, to);
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -139,7 +155,8 @@ exports.findSalesByCategory = async ({ from, to, estado, tz }) => {
   const sql = `
     SELECT c.id AS categoria_id, c.nombre AS categoria,
            SUM(dv.cantidad) AS unidades,
-           SUM(dv.subtotal) AS ingreso
+           SUM(dv.subtotal) AS ingreso,
+           ROUND(SUM((dv.precio_unitario - dv.costo_unitario) * dv.cantidad),2) AS ganancia
     FROM detalle_venta dv
     JOIN ventas v     ON v.id = dv.venta_id
     JOIN productos p  ON p.id = dv.producto_id
@@ -157,7 +174,7 @@ exports.findSalesByClient = async ({ from, to, estado, tz, limit = 50 }) => {
   const where = [];
   const params = [];
   const estadoNorm = normalizeEstado(estado);
-  if (estadoNorm) { where.push('v.estado_pago = ?'); params.push(estadoNorm); }
+  if (estadoNorm) { where.push('v.estado_venta = ?'); params.push(estadoNorm); }
   if (from) pushDateFilter(where, params, '>=', tzSafe, from);
   if (to)   pushDateFilter(where, params, '<=', tzSafe, to);
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -165,7 +182,11 @@ exports.findSalesByClient = async ({ from, to, estado, tz, limit = 50 }) => {
   const sql = `
     SELECT v.cliente_id, c.nombre AS cliente,
            COUNT(*) AS tickets,
-           SUM(v.total_venta) AS ingreso
+           SUM(v.total_venta) AS ingreso,
+           ROUND(SUM(
+             (SELECT SUM(dv.cantidad * (dv.precio_unitario - dv.costo_unitario))
+              FROM detalle_venta dv WHERE dv.venta_id = v.id)
+           ),2) AS ganancia
     FROM ventas v
     JOIN clientes c ON c.id = v.cliente_id
     ${whereSql}
@@ -182,7 +203,7 @@ exports.findSalesByUser = async ({ from, to, estado, tz }) => {
   const where = [];
   const params = [];
   const estadoNorm = normalizeEstado(estado);
-  if (estadoNorm) { where.push('v.estado_pago = ?'); params.push(estadoNorm); }
+  if (estadoNorm) { where.push('v.estado_venta = ?'); params.push(estadoNorm); }
   if (from) pushDateFilter(where, params, '>=', tzSafe, from);
   if (to)   pushDateFilter(where, params, '<=', tzSafe, to);
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -190,7 +211,11 @@ exports.findSalesByUser = async ({ from, to, estado, tz }) => {
   const sql = `
     SELECT u.id AS usuario_id, u.username AS usuario,
            COUNT(*) AS tickets,
-           SUM(v.total_venta) AS ingreso
+           SUM(v.total_venta) AS ingreso,
+           ROUND(SUM(
+             (SELECT SUM(dv.cantidad * (dv.precio_unitario - dv.costo_unitario))
+              FROM detalle_venta dv WHERE dv.venta_id = v.id)
+           ),2) AS ganancia
     FROM ventas v
     LEFT JOIN usuarios u ON u.id = v.usuario_id
     ${whereSql}
