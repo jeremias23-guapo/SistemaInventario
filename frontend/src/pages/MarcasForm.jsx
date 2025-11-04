@@ -27,7 +27,7 @@ export default function MarcaForm() {
     (async () => {
       try {
         const r = await fetchMarca(id);
-        setNombre(r?.data?.nombre ?? '');
+        setNombre(r?.nombre ?? '');
         setDirty(false);
       } catch (err) {
         console.error('Error cargando marca', err);

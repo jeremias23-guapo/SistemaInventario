@@ -1,3 +1,4 @@
+// frontend/src/pages/Ventas.jsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -7,7 +8,6 @@ import {
   Typography,
   Paper,
   TextField,
-  TablePagination,
   MenuItem,
   Chip,
   Dialog,
@@ -53,14 +53,13 @@ export default function Ventas() {
   const [limit, setLimit] = useState(10);
   const [total, setTotal] = useState(0);
 
-  const [confirmData, setConfirmData] = useState(null); // 💬 para el diálogo
+  const [confirmData, setConfirmData] = useState(null);
 
   const nav = useNavigate();
   const isAdmin = getIsAdmin();
   const { start, stop } = useLoading();
   const stoppedOnceRef = useRef(false);
 
-  // ✅ Cargar ventas iniciales
   const formatVentas = (resp) => {
     if (Array.isArray(resp)) {
       setTotal(resp.length);
@@ -143,7 +142,6 @@ export default function Ventas() {
     await loadVentas({ page: 1 });
   };
 
-  // 💬 Confirmación
   const handleConfirm = async () => {
     if (!confirmData) return;
     const { row, field, next } = confirmData;
@@ -160,7 +158,6 @@ export default function Ventas() {
   };
   const handleCancelDialog = () => setConfirmData(null);
 
-  // ✅ Columnas con Chips interactivos
   const columns = useMemo(
     () => [
       { Header: 'ID', accessor: 'id' },
@@ -168,7 +165,6 @@ export default function Ventas() {
       { Header: 'Cliente', accessor: 'cliente_nombre' },
       { Header: 'Fecha', accessor: (row) => <DateField value={row.fecha} empty="—" /> },
 
-      // 🔹 Estado de pago interactivo
       {
         Header: 'Pago',
         accessor: (row) => {
@@ -204,7 +200,6 @@ export default function Ventas() {
         },
       },
 
-      // 🔹 Estado de envío interactivo
       {
         Header: 'Envío',
         accessor: (row) => {
@@ -252,7 +247,6 @@ export default function Ventas() {
         },
       },
 
-      // 🔹 Estado de venta
       {
         Header: 'Venta',
         accessor: (row) => {
@@ -275,137 +269,118 @@ export default function Ventas() {
 
       { Header: 'Método', accessor: 'metodo_pago' },
       { Header: 'Total bruto', accessor: (r) => Number(r.total_venta).toFixed(2) },
+      { Header: 'Costo envío', accessor: (r) => `$ ${Number(r.costo_envio_proveedor || 0).toFixed(2)}` },
+      { Header: 'Comisión', accessor: (r) => `$ ${Number(r.transportista_comision || 0).toFixed(2)}` },
       { Header: 'Total neto', accessor: (r) => `$ ${Number(r.total_venta_neta).toFixed(2)}` },
       { Header: 'Usuario', accessor: 'usuario_nombre' },
       { Header: 'Transportista', accessor: (r) => r.transportista_nombre || '—' },
-      { Header: 'Comisión', accessor: (r) => `$ ${Number(r.transportista_comision || 0).toFixed(2)}` },
     ],
     []
   );
 
   return (
-    <Container sx={{ mt: 4 }}>
-      <Typography variant="h5" gutterBottom>
-        Ventas
-      </Typography>
-
-      <Paper sx={{ p: 2, mb: 3 }}>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
-          <TextField
-            label="Código"
-            variant="outlined"
-            size="small"
-            value={codigo}
-            onChange={(e) => setCodigo(e.target.value)}
-            disabled={loading}
-          />
-          <TextField
-            label="Fecha"
-            type="date"
-            variant="outlined"
-            size="small"
-            InputLabelProps={{ shrink: true }}
-            value={fecha}
-            onChange={(e) => setFecha(e.target.value)}
-            disabled={loading}
-          />
-          <TextField
-            select
-            size="small"
-            label="Estado envío"
-            value={estadoEnvio}
-            onChange={(e) => setEstadoEnvio(e.target.value)}
-            sx={{ minWidth: 200 }}
-            disabled={loading}
-          >
-            {ESTADOS_ENVIO.map((o) => (
-              <MenuItem key={o.value} value={o.value}>
-                {o.label}
-              </MenuItem>
-            ))}
-          </TextField>
-          <Button variant="text" onClick={onClear} disabled={loading || (!codigo && !fecha && !estadoEnvio)}>
-            Limpiar
-          </Button>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={() => {
-              start();
-              nav('/ventas/nuevo');
-            }}
-          >
-            Nueva Venta
-          </Button>
-        </Stack>
-      </Paper>
-
-      <Paper>
-        <DataTable
-          rows={ventas}
-          columns={columns}
-          loading={loading}
-          onView={(row) => {
-            start();
-            nav(`/ventas/ver/${row.id}`);
-          }}
-          onEdit={(row) => {
-            if (!isAdmin && isLocked(row)) return;
-            start();
-            nav(`/ventas/editar/${row.id}`);
-          }}
-          onDelete={(row) => {
-            if (!isAdmin && isLocked(row)) return;
-            if (window.confirm('¿Eliminar esta venta?')) {
-              setLoading(true);
-              deleteVenta(row.id)
-                .then(() => {
-                  if (ventas.length === 1 && page > 1) {
-                    setPage((p) => p - 1);
-                  } else {
-                    if (codigo || fecha || estadoEnvio)
-                      return handleSearch({ codigo, fecha, estado_envio: estadoEnvio });
-                    return loadVentas();
-                  }
-                })
-                .catch((err) => console.error('Error eliminando venta', err))
-                .finally(() => setLoading(false));
-            }
-          }}
-          actionGuard={(row) => ({
-            view: true,
-            edit: isAdmin || !isLocked(row),
-            delete: isAdmin || !isLocked(row),
-          })}
-        />
-
-        <TablePagination
-          component="div"
-          count={total}
-          page={page - 1}
-          onPageChange={(_, newPage) => setPage(newPage + 1)}
-          rowsPerPage={limit}
-          onRowsPerPageChange={(e) => {
-            setLimit(parseInt(e.target.value, 10));
-            setPage(1);
-          }}
-          rowsPerPageOptions={[5, 10, 20, 50, 100]}
-        />
-      </Paper>
-
-      {/* 💬 Diálogo de confirmación */}
+    <>
       <Dialog open={!!confirmData} onClose={handleCancelDialog}>
-        <DialogTitle>{confirmData?.title}</DialogTitle>
-        <DialogContent>
-          <Typography>{confirmData?.message}</Typography>
-        </DialogContent>
+        <DialogTitle>{confirmData?.title || 'Confirmar cambio'}</DialogTitle>
+        <DialogContent>{confirmData?.message || ''}</DialogContent>
         <DialogActions>
           <Button onClick={handleCancelDialog}>Cancelar</Button>
-          <Button onClick={handleConfirm} variant="contained" color="primary">
-            Confirmar
-          </Button>
+          <Button onClick={handleConfirm} variant="contained">Confirmar</Button>
         </DialogActions>
       </Dialog>
-    </Container>
+
+      <Container sx={{ mt: 4 }}>
+        <Typography variant="h5" gutterBottom>Ventas</Typography>
+
+        <Paper sx={{ p: 2, mb: 3 }}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
+            <TextField
+              label="Código"
+              variant="outlined"
+              size="small"
+              value={codigo}
+              onChange={(e) => setCodigo(e.target.value)}
+              disabled={loading}
+            />
+            <TextField
+              label="Fecha"
+              type="date"
+              variant="outlined"
+              size="small"
+              InputLabelProps={{ shrink: true }}
+              value={fecha}
+              onChange={(e) => setFecha(e.target.value)}
+              disabled={loading}
+            />
+            <TextField
+              select
+              size="small"
+              label="Estado envío"
+              value={estadoEnvio}
+              onChange={(e) => setEstadoEnvio(e.target.value)}
+              sx={{ minWidth: 200 }}
+              disabled={loading}
+            >
+              {ESTADOS_ENVIO.map((o) => (
+                <MenuItem key={o.value} value={o.value}>
+                  {o.label}
+                </MenuItem>
+              ))}
+            </TextField>
+            <Button variant="text" onClick={onClear} disabled={loading || (!codigo && !fecha && !estadoEnvio)}>
+              Limpiar
+            </Button>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={() => {
+                start();
+                nav('/ventas/nuevo');
+              }}
+            >
+              Nueva Venta
+            </Button>
+          </Stack>
+        </Paper>
+
+        <Paper>
+         <DataTable
+  rows={ventas}
+  columns={columns}
+  loading={loading}
+  onView={(row) => {
+    start();
+    nav(`/ventas/ver/${row.id}`);
+  }}
+  onEdit={(row) => {
+    if (!isAdmin && isLocked(row)) return;
+    start();
+    nav(`/ventas/editar/${row.id}`);
+  }}
+  onDelete={(row) => {
+    if (!isAdmin && isLocked(row)) return;
+    if (window.confirm('¿Eliminar esta venta?')) {
+      setLoading(true);
+      deleteVenta(row.id)
+        .then(() => {
+          if (ventas.length === 1 && page > 1) {
+            setPage((p) => p - 1);
+          } else {
+            const hasFilters = codigo || fecha || estadoEnvio;
+            if (hasFilters) {
+              return handleSearch({ codigo, fecha, estado_envio: estadoEnvio });
+            }
+            return loadVentas();
+          }
+        })
+        .catch((err) => console.error('Error eliminando venta', err))
+        .finally(() => setLoading(false));
+    }
+  }}
+/>
+
+        </Paper>
+      </Container>
+    </>
   );
 }

@@ -24,12 +24,13 @@ class VentaRepo {
       : `VEN-${year}-${next}`;
   }
 
-  // Insertar cabecera (incluye transportista y comision_transportista)
+  // Insertar cabecera (incluye transportista, costo_envio_proveedor y comision_transportista)
   static async insertCabecera(conn, {
     codigo,
     cliente_id,
     fecha,
     total_venta,
+    costo_envio_proveedor = 0,
     usuario_id,
     metodo_pago = 'transferencia',
     estado_envio = 'pendiente_envio',
@@ -40,12 +41,12 @@ class VentaRepo {
   }) {
     const [result] = await conn.query(
       `INSERT INTO ventas
-        (codigo, cliente_id, fecha, total_venta, usuario_id,
+        (codigo, cliente_id, fecha, total_venta, costo_envio_proveedor, usuario_id,
          metodo_pago, estado_envio, estado_pago, estado_venta,
          transportista_id, comision_transportista)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        codigo, cliente_id, fecha, total_venta, usuario_id,
+        codigo, cliente_id, fecha, total_venta, costo_envio_proveedor, usuario_id,
         metodo_pago, estado_envio, estado_pago, estado_venta,
         transportista_id, comision_transportista
       ]
@@ -56,7 +57,7 @@ class VentaRepo {
   // Update cabecera (cuando edites)
   static async updateCabecera(conn, id, {
     codigo, cliente_id, metodo_pago, estado_envio, estado_pago, estado_venta,
-    total_venta, transportista_id, comision_transportista
+    total_venta, costo_envio_proveedor = 0, transportista_id, comision_transportista
   }) {
     await conn.query(
       `UPDATE ventas
@@ -67,78 +68,80 @@ class VentaRepo {
               estado_pago = ?,
               estado_venta = ?,
               total_venta = ?,
+              costo_envio_proveedor = ?,
               transportista_id = ?,
               comision_transportista = ?
         WHERE id = ?`,
       [
         codigo, cliente_id, metodo_pago, estado_envio, estado_pago, estado_venta,
-        total_venta, transportista_id, comision_transportista, id
+        total_venta, costo_envio_proveedor, transportista_id, comision_transportista, id
       ]
     );
   }
 
-  // ---- BÚSQUEDA CON PÁGINA/LÍMITE (muestra comisión guardada y total neto)
- static async search({ codigo, fecha, estado_envio, page = 1, limit = 10 }) {
-  const conditions = [];
-  const params = [];
+  // ---- BÚSQUEDA CON PÁGINA/LÍMITE
+  static async search({ codigo, fecha, estado_envio, page = 1, limit = 10 }) {
+    const conditions = [];
+    const params = [];
 
-  if (codigo) {
-    conditions.push('v.codigo LIKE ?');
-    params.push(`${codigo}%`);
+    if (codigo) {
+      conditions.push('v.codigo LIKE ?');
+      params.push(`${codigo}%`);
+    }
+
+    if (fecha) {
+      const start = new Date(`${fecha}T00:00:00-06:00`);
+      const end   = new Date(`${fecha}T24:00:00-06:00`);
+      const pad = n => String(n).padStart(2, '0');
+      const fmt = d => `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+      const startUtc = fmt(start);
+      const endUtc   = fmt(end);
+      conditions.push('(v.fecha >= ? AND v.fecha < ?)');
+      params.push(startUtc, endUtc);
+    }
+
+    if (estado_envio && ['pendiente_envio','enviado','recibido'].includes(String(estado_envio))) {
+      conditions.push('v.estado_envio = ?');
+      params.push(estado_envio);
+    }
+
+    const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
+
+    const [cntRows] = await pool.query(
+      `SELECT COUNT(*) AS total
+         FROM ventas v
+         JOIN clientes c ON v.cliente_id = c.id
+         LEFT JOIN usuarios u ON u.id = v.usuario_id
+         LEFT JOIN transportistas t ON t.id = v.transportista_id
+         ${where}`,
+      params
+    );
+    const total = Number(cntRows?.[0]?.total || 0);
+
+    const offset = (Math.max(1, +page) - 1) * Math.max(1, +limit);
+    const sql = `
+      SELECT
+        v.id, v.codigo, v.cliente_id, c.nombre AS cliente_nombre,
+        v.fecha,
+        v.metodo_pago, v.estado_envio, v.estado_pago, v.estado_venta,
+        v.total_venta,
+        v.costo_envio_proveedor,
+        v.comision_transportista AS transportista_comision,
+        (v.total_venta + v.costo_envio_proveedor - v.comision_transportista) AS total_venta_neta,
+        u.username AS usuario_nombre,
+        v.transportista_id, t.nombre AS transportista_nombre
+      FROM ventas v
+      JOIN clientes c ON v.cliente_id = c.id
+      LEFT JOIN usuarios u ON u.id = v.usuario_id
+      LEFT JOIN transportistas t ON t.id = v.transportista_id
+      ${where}
+      ORDER BY v.fecha DESC
+      LIMIT ? OFFSET ?
+    `;
+    const [rows] = await pool.query(sql, [...params, Math.max(1, +limit), offset]);
+
+    return { data: rows, pagination: { page: +page || 1, limit: +limit || 10, total } };
   }
-
-  if (fecha) {
-    const start = new Date(`${fecha}T00:00:00-06:00`);
-    const end   = new Date(`${fecha}T24:00:00-06:00`);
-    const pad = n => String(n).padStart(2, '0');
-    const fmt = d => `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
-    const startUtc = fmt(start);
-    const endUtc   = fmt(end);
-    conditions.push('(v.fecha >= ? AND v.fecha < ?)');
-    params.push(startUtc, endUtc);
-  }
-
-  if (estado_envio && ['pendiente_envio','enviado','recibido'].includes(String(estado_envio))) {
-    conditions.push('v.estado_envio = ?');
-    params.push(estado_envio);
-  }
-
-  const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
-
-  const [cntRows] = await pool.query(
-    `SELECT COUNT(*) AS total
-       FROM ventas v
-       JOIN clientes c ON v.cliente_id = c.id
-       LEFT JOIN usuarios u ON u.id = v.usuario_id
-       LEFT JOIN transportistas t ON t.id = v.transportista_id
-       ${where}`,
-    params
-  );
-  const total = Number(cntRows?.[0]?.total || 0);
-
-  const offset = (Math.max(1, +page) - 1) * Math.max(1, +limit);
-  const sql = `
-    SELECT
-      v.id, v.codigo, v.cliente_id, c.nombre AS cliente_nombre,
-      v.fecha,
-      v.metodo_pago, v.estado_envio, v.estado_pago, v.estado_venta,
-      v.total_venta,
-      v.comision_transportista AS transportista_comision,
-      (v.total_venta - v.comision_transportista) AS total_venta_neta,
-      u.username AS usuario_nombre,
-      v.transportista_id, t.nombre AS transportista_nombre
-    FROM ventas v
-    JOIN clientes c ON v.cliente_id = c.id
-    LEFT JOIN usuarios u ON u.id = v.usuario_id
-    LEFT JOIN transportistas t ON t.id = v.transportista_id
-    ${where}
-    ORDER BY v.fecha DESC
-    LIMIT ? OFFSET ?
-  `;
-  const [rows] = await pool.query(sql, [...params, Math.max(1, +limit), offset]);
-
-  return { data: rows, pagination: { page: +page || 1, limit: +limit || 10, total } };
-}
 
   // ---- Listado con paginación
   static async findAll({ page = 1, limit = 10 } = {}) {
@@ -159,8 +162,9 @@ class VentaRepo {
          v.fecha,
          v.metodo_pago, v.estado_envio, v.estado_pago, v.estado_venta,
          v.total_venta,
+         v.costo_envio_proveedor,
          v.comision_transportista AS transportista_comision,
-         (v.total_venta - v.comision_transportista) AS total_venta_neta,
+         (v.total_venta + v.costo_envio_proveedor - v.comision_transportista) AS total_venta_neta,
          u.username AS usuario_nombre,
          v.transportista_id, t.nombre AS transportista_nombre
        FROM ventas v
@@ -183,8 +187,9 @@ class VentaRepo {
          v.fecha,
          v.metodo_pago, v.estado_envio, v.estado_pago, v.estado_venta,
          v.total_venta,
+         v.costo_envio_proveedor,
          v.comision_transportista AS transportista_comision,
-         (v.total_venta - v.comision_transportista) AS total_venta_neta,
+         (v.total_venta + v.costo_envio_proveedor - v.comision_transportista) AS total_venta_neta,
          v.transportista_id, t.nombre AS transportista_nombre
        FROM ventas v
        JOIN clientes c ON v.cliente_id = c.id
@@ -196,29 +201,27 @@ class VentaRepo {
   }
 
   // Detalle por venta
-static async fetchLineas(id) {
-  const [rows] = await pool.query(
-    `SELECT
-         dv.id AS detalle_id,
-         dv.producto_id,
-         p.nombre AS producto_nombre,
-         p.imagen_url,
-         p.presentacion,
-         dv.cantidad,
-         dv.precio_unitario,
-         dv.descuento,
-         (dv.cantidad * dv.precio_unitario * (dv.descuento / 100)) AS descuento_monto,
-         dv.subtotal,
-         dv.costo_unitario
-       FROM detalle_venta dv
-       JOIN productos p ON dv.producto_id = p.id
-       WHERE dv.venta_id = ?`,
-    [id]
-  );
-  return rows;
-}
-
-
+  static async fetchLineas(id) {
+    const [rows] = await pool.query(
+      `SELECT
+           dv.id AS detalle_id,
+           dv.producto_id,
+           p.nombre AS producto_nombre,
+           p.imagen_url,
+           p.presentacion,
+           dv.cantidad,
+           dv.precio_unitario,
+           dv.descuento,
+           (dv.cantidad * dv.precio_unitario * (dv.descuento / 100)) AS descuento_monto,
+           dv.subtotal,
+           dv.costo_unitario
+         FROM detalle_venta dv
+         JOIN productos p ON dv.producto_id = p.id
+         WHERE dv.venta_id = ?`,
+      [id]
+    );
+    return rows;
+  }
 
   // Insertar línea detalle
   static async insertDetalle(conn, {
@@ -254,12 +257,10 @@ static async fetchLineas(id) {
     );
   }
 
-  // Borrar detalle
   static async deleteDetalle(conn, ventaId) {
     await conn.query(`DELETE FROM detalle_venta WHERE venta_id = ?`, [ventaId]);
   }
 
-  // Borrar historial de tipo venta
   static async deleteHistorial(conn, ventaId) {
     await conn.query(
       `DELETE FROM historial_transacciones WHERE id_venta = ? AND tipo_transaccion = 'venta'`,
@@ -267,7 +268,6 @@ static async fetchLineas(id) {
     );
   }
 
-  // Borrar cabecera
   static async deleteCabecera(conn, ventaId) {
     await conn.query(`DELETE FROM ventas WHERE id = ?`, [ventaId]);
   }

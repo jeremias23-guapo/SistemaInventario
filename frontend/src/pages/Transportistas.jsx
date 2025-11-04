@@ -54,11 +54,13 @@ export default function Transportistas() {
   }, [page, pageSize, q]);
 
   // Si quieres filtrar en servidor, elimina "filtered" y pasa rows directo al DataTable
-  const columns = useMemo(() => [
-    { Header: 'ID', accessor: 'id' },
-    { Header: 'Nombre', accessor: 'nombre' },
-    { Header: 'Activo', accessor: r => (r.activo ? 'Sí' : 'No') },
-  ], []);
+ const columns = useMemo(() => [
+  { Header: 'ID', accessor: 'id' },
+  { Header: 'Nombre', accessor: 'nombre' },
+  { Header: 'Precio Envío (USD)', accessor: r => `$${r.precio_envio?.toFixed(2)}` },
+  { Header: 'Activo', accessor: r => (r.activo ? 'Sí' : 'No') },
+], []);
+
 
   return (
     <Container sx={{ mt: 4 }}>
