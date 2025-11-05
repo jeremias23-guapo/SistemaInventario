@@ -428,16 +428,18 @@ export default function VentaForm() {
                           fullWidth
                         />
                       </TableCell>
-                      <TableCell align="right" width="15%">
-                        <TextField
-                          size="small"
-                          name="precio_unitario"
-                          type="number"
-                          value={ln.precio_unitario}
-                          onChange={(e) => handleLineaChange(idx, e)}
-                          fullWidth
-                        />
-                      </TableCell>
+                     <TableCell align="right" width="15%">
+  <TextField
+    size="small"
+    name="precio_unitario"
+    type="number"
+    value={ln.precio_unitario}
+    onChange={(e) => handleLineaChange(idx, e)}
+    fullWidth
+    InputProps={{ readOnly: true }} // ← 🔒 Campo bloqueado
+  />
+</TableCell>
+
                       <TableCell align="right" width="15%">
                         <TextField
                           size="small"
