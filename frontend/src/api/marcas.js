@@ -1,16 +1,15 @@
 // frontend/src/api/marcas.js
-import axios from 'axios';
-const API = axios.create({ baseURL: 'http://localhost:3001/api/marcas' });
+import API from './axios';
 
 // Endpoints base
-export const fetchMarcas   = (params)   => API.get('/', { params });    // { data, pagination }
-export const fetchMarca    = (id)       => API.get(`/${id}`).then(r => r.data);
-export const createMarca   = (data)     => API.post('/', data).then(r => r.data);
-export const updateMarca   = (id, data) => API.put(`/${id}`, data).then(r => r.data);
-export const deleteMarca   = (id)       => API.delete(`/${id}`).then(r => r.data);
+export const fetchMarcas = (params) => API.get('/marcas', { params }); // { data, pagination }
+export const fetchMarca = (id) => API.get(`/marcas/${id}`).then((r) => r.data);
+export const createMarca = (data) => API.post('/marcas', data).then((r) => r.data);
+export const updateMarca = (id, data) => API.put(`/marcas/${id}`, data).then((r) => r.data);
+export const deleteMarca = (id) => API.delete(`/marcas/${id}`).then((r) => r.data);
 
 // ===== Helpers para AsyncAutocomplete =====
-const TOP_LIMIT = 5;   // cantidad a mostrar al abrir sin escribir
+const TOP_LIMIT = 5; // cantidad a mostrar al abrir sin escribir
 const PAGE_LIMIT_FALLBACK = 20;
 
 export async function fetchMarcasPage({ q = '', page = 1, limit = PAGE_LIMIT_FALLBACK } = {}) {
@@ -24,26 +23,24 @@ export async function fetchMarcasPage({ q = '', page = 1, limit = PAGE_LIMIT_FAL
     }
     const res = await fetchMarcas({
       page: 1,
-      pageSize: TOP_LIMIT,       // fuerza lista corta inicial
-      // si tu backend acepta algún orden (ej. más usados/recientes), podrías enviar:
-      // orderBy: 'uso_desc' || 'created_at_desc'
+      pageSize: TOP_LIMIT, // fuerza lista corta inicial
     });
 
     const rows = Array.isArray(res.data?.data) ? res.data.data : [];
     return {
-      items: rows.map(m => ({ id: m.id, label: m.nombre })),
-      hasMore: false,            // 👈 bloquea infinite scroll en modo teaser
+      items: rows.map((m) => ({ id: m.id, label: m.nombre })),
+      hasMore: false, // 👈 bloquea infinite scroll en modo teaser
     };
   }
 
   // Modo búsqueda normal con paginado real
   const res = await fetchMarcas({ page, pageSize: limit, nombre: term });
   const rows = Array.isArray(res.data?.data) ? res.data.data : [];
-  const pag  = res.data?.pagination ?? { total: rows.length, page, pageSize: limit };
+  const pag = res.data?.pagination ?? { total: rows.length, page, pageSize: limit };
   const hasMore = pag.page * pag.pageSize < pag.total;
 
   return {
-    items: rows.map(m => ({ id: m.id, label: m.nombre })),
+    items: rows.map((m) => ({ id: m.id, label: m.nombre })),
     hasMore,
   };
 }

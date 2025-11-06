@@ -1,10 +1,7 @@
-import axios from 'axios';
+// frontend/src/api/productos.js
+import API from './axios';
 
-const API = axios.create({
-  baseURL: 'http://localhost:3001/api/productos' // URL base sin "/productos"
-});
-
-/* ---------------- Utilidades de normalización (nuevas) ---------------- */
+/* ---------------- Utilidades de normalización ---------------- */
 const extractArray = (payload) => {
   if (Array.isArray(payload)) return payload;
   if (payload && Array.isArray(payload.items)) return payload.items; // { items: [] }
@@ -22,9 +19,8 @@ const extractMeta = (payload, fallback = {}) => {
   };
 };
 
-/* ------------------- Tus funciones actuales (sin cambios) ------------------- */
+/* ------------------- Funciones principales ------------------- */
 // Obtener productos con búsqueda y/o filtrado por categoría
-
 export const fetchProductos = (filters = {}, paging = {}) => {
   const { search, categoriaId, subcategoriaId } = filters;
   const { page = 1, pageSize = 10 } = paging;
@@ -36,29 +32,27 @@ export const fetchProductos = (filters = {}, paging = {}) => {
   q.append('page', page);
   q.append('pageSize', pageSize);
 
-  // ✅ Ahora devolvemos SIEMPRE el cuerpo (data), no el AxiosResponse
-  return API.get(`?${q.toString()}`).then(r => r.data);
+  return API.get(`/productos?${q.toString()}`).then((r) => r.data);
 };
+
 // Obtener un producto por ID
-export const fetchProducto = (id) => API.get(`/${id}`);
+export const fetchProducto = (id) => API.get(`/productos/${id}`);
 
 // Crear un nuevo producto
-export const createProducto = (data) => API.post('/', data);
+export const createProducto = (data) => API.post('/productos', data);
 
 // Actualizar un producto existente
-export const updateProducto = (id, data) => API.put(`/${id}`, data);
+export const updateProducto = (id, data) => API.put(`/productos/${id}`, data);
 
 // Eliminar un producto
-export const deleteProducto = (id) => API.delete(`/${id}`);
+export const deleteProducto = (id) => API.delete(`/productos/${id}`);
 
-/* ---------------- Helpers nuevos, seguros para el render ---------------- */
-// Devuelve SIEMPRE un array de productos (para evitar "map is not a function")
+/* ---------------- Helpers seguros para el render ---------------- */
 export const fetchProductosList = async (filters = {}, paging = {}) => {
   const { data } = await fetchProductos(filters, paging);
   return extractArray(data);
 };
 
-// Devuelve { items:[], total, page, pageSize } por si usas paginación en UI
 export const fetchProductosListWithMeta = async (filters = {}, paging = {}) => {
   const { data } = await fetchProductos(filters, paging);
   return {
@@ -73,7 +67,6 @@ export const searchProductosLight = async ({ q = '', page = 1, pageSize = 20 } =
   if (q) params.append('q', q);
   params.append('page', page);
   params.append('pageSize', pageSize);
-  const { data } = await API.get(`/search?${params.toString()}`);
-  // Esperamos { items:[{id,label,precio_venta}], hasMore, page, pageSize, total }
+  const { data } = await API.get(`/productos/search?${params.toString()}`);
   return data;
 };

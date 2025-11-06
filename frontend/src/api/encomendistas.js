@@ -1,26 +1,26 @@
 // src/api/encomendistas.js
-import axios from 'axios';
+import API from './axios';
 
-const API = axios.create({ baseURL: 'http://localhost:3001/api/encomendistas' });
-
+// Interceptor para añadir el token JWT automáticamente
 API.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
-// CRUD
+// CRUD básico de Encomendistas
+
 export const fetchEncomendistas = (q = '') =>
-  API.get('/', { params: { q } }).then(res => res.data);
+  API.get(`/encomendistas`, { params: { q } }).then(res => res.data);
 
 export const fetchEncomendista = (id) =>
-  API.get(`/${id}`).then(res => res.data);
+  API.get(`/encomendistas/${id}`).then(res => res.data);
 
 export const createEncomendista = (data) =>
-  API.post('/', data).then(res => res.data);
+  API.post(`/encomendistas`, data).then(res => res.data);
 
 export const updateEncomendista = (id, data) =>
-  API.put(`/${id}`, data).then(res => res.data);
+  API.put(`/encomendistas/${id}`, data).then(res => res.data);
 
 export const deleteEncomendista = (id) =>
-  API.delete(`/${id}`).then(res => res.data);
+  API.delete(`/encomendistas/${id}`).then(res => res.data);

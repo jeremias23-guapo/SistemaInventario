@@ -1,9 +1,5 @@
-// frontend/src/api/ventas.js
-import axios from 'axios';
-
-const API = axios.create({
-  baseURL: 'http://localhost:3001/api/ventas'
-});
+// src/api/ventas.js
+import API from './axios';
 
 // === Interceptor para añadir el token a cada request ===
 API.interceptors.request.use((config) => {
@@ -13,7 +9,7 @@ API.interceptors.request.use((config) => {
       config.headers = config.headers || {};
       config.headers.Authorization = `Bearer ${token}`;
     }
-  } catch (e) {
+  } catch {
     // sin token, seguimos sin header
   }
   return config;
@@ -32,7 +28,7 @@ API.interceptors.response.use(
   }
 );
 
-// --- NUEVO: helpers para construir query de paginación
+// --- Helper para construir query de paginación ---
 const withPageParams = (url, { page, limit } = {}) => {
   const params = new URLSearchParams();
   if (page)  params.append('page', page);
@@ -41,24 +37,33 @@ const withPageParams = (url, { page, limit } = {}) => {
   return qs ? `${url}?${qs}` : url;
 };
 
+// --- CRUD de Ventas ---
 export const fetchVentas = ({ page = 1, limit = 10 } = {}) =>
-  API.get(withPageParams('/', { page, limit })).then(res => res.data);
+  API.get(withPageParams('/ventas', { page, limit })).then(res => res.data);
 
-export const fetchVenta = (id) => API.get(`/${id}`).then(res => res.data);
-export const createVenta = (data) => API.post('/', data).then(res => res.data);
-export const updateVenta = (id, data) => API.put(`/${id}`, data).then(res => res.data);
-export const deleteVenta = (id) => API.delete(`/${id}`);
+export const fetchVenta = (id) =>
+  API.get(`/ventas/${id}`).then(res => res.data);
 
+export const createVenta = (data) =>
+  API.post('/ventas', data).then(res => res.data);
+
+export const updateVenta = (id, data) =>
+  API.put(`/ventas/${id}`, data).then(res => res.data);
+
+export const deleteVenta = (id) =>
+  API.delete(`/ventas/${id}`);
+
+// --- Búsqueda de Ventas ---
 export const searchVentas = ({ codigo, fecha, estado_envio, page = 1, limit = 10 }) => {
   const params = new URLSearchParams();
   if (codigo) params.append('codigo', codigo);
   if (fecha) params.append('fecha', fecha);
-  if (estado_envio) params.append('estado_envio', estado_envio); // <-- NUEVO
+  if (estado_envio) params.append('estado_envio', estado_envio);
   if (page)  params.append('page', page);
   if (limit) params.append('limit', limit);
-  return API.get(`/search?${params.toString()}`).then(res => res.data);
+  return API.get(`/ventas/search?${params.toString()}`).then(res => res.data);
 };
 
-// --- ✅ NUEVO: quick update usando PATCH /ventas/:id/estado ---
+// --- Actualización rápida (PATCH /ventas/:id/estado) ---
 export const quickUpdateVenta = (id, data) =>
-  API.patch(`/${id}/estado`, data).then(res => res.data);
+  API.patch(`/ventas/${id}/estado`, data).then(res => res.data);

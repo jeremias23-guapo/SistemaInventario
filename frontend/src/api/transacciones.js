@@ -1,23 +1,22 @@
 // frontend/src/api/transacciones.js
-import axios from 'axios';
+import API from './axios';
 
-const API = axios.create({
-  baseURL: 'http://localhost:3001/api/transacciones'
-});
-
+// Página de historial con paginación por cursor
 export const fetchHistorialPage = async ({ limit = 50, cursor = null } = {}) => {
   const params = { limit };
   if (cursor) params.cursor = cursor;
-  const res = await API.get('/', { params });
+  const res = await API.get('/transacciones', { params });
   return res.data; // { items, nextCursor, hasMore }
 };
+
 // Lista todo el historial
-export const fetchHistorial    = ()      => API.get('/').then(res => res.data);
+export const fetchHistorial = () =>
+  API.get('/transacciones').then((res) => res.data);
 
-// Obtiene una transacción por ID (opcional, si necesitas ver detalle)
-export const fetchTransaccion  = id      => API.get(`/${id}`).then(res => res.data);
+// Obtiene una transacción por ID (detalle)
+export const fetchTransaccion = (id) =>
+  API.get(`/transacciones/${id}`).then((res) => res.data);
 
-// Obtiene todas las transacciones de una orden (si lo usas en detalle de orden)
-export const fetchByOrdenId    = ordenId => API.get(`/orden/${ordenId}`).then(res => res.data);
-
-// (Ya no exportamos createTransaccion, updateTransaccion ni deleteTransaccion)
+// Obtiene todas las transacciones de una orden
+export const fetchByOrdenId = (ordenId) =>
+  API.get(`/transacciones/orden/${ordenId}`).then((res) => res.data);
